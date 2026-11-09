@@ -8,6 +8,7 @@ import tempfile
 import wave
 
 from vrchat_speech_assistant.windows_speech import LocalSynthesisError
+from vrchat_speech_assistant.output_control import run_process, OutputCancelled
 
 
 class PiperSpeech:
@@ -29,7 +30,7 @@ class PiperSpeech:
                     raise ValueError("Install Piper separately and select its piper.exe backend")
                 command = [str(Path(backend).resolve())]
             # No shell interpolation, automatic downloads, or text in argv/logs.
-            subprocess.run(
+            run_process(
                 [*command, "--model", str(model),
                  "--config", str(model) + ".json", "--output-file", str(path),
                  "--length-scale", str(100 / max(50, min(200, rate)))],
@@ -41,6 +42,8 @@ class PiperSpeech:
             with wave.open(str(path), "rb") as audio:
                 if audio.getnframes() == 0:
                     raise ValueError("Piper produced empty audio")
+        except OutputCancelled:
+            raise
         except Exception as error:
             raise LocalSynthesisError("Piper synthesis failed; check installation and voice assets") from error
 

@@ -1,31 +1,39 @@
-VRChat Speech Assistant Deluxe 1.15.0 release candidate 2
+VRChat Speech Assistant Deluxe 1.16.0 release candidate 1
 
-Download **VRChatSpeechAssistantDeluxe.exe** below. It is a standalone Windows
-x64 application; Windows speech and Polly need no separate Python installation.
+Download **VRChatSpeechAssistantDeluxe.exe** below (Windows x64, no Python needed
+for Windows speech/Polly). Replace your old executable; existing settings remain
+in %APPDATA%/VRChat Speech Assistant.
 
-New features:
-- Local Windows speech as the default provider, with optional online Polly fallback.
-- Pasted-text speech for manual ChatGPT responses.
-- Nickname corrections and keyword-triggered chatbox text/emoji additions.
-- Personality presets, editable announcements, hotkeys and delivery modes.
-- Rotating crash diagnostics and safer speech/thread handling.
+New live-conversation controls:
+- **Ctrl+Alt+S:** stop speaking and cancel pending auto-send, with a matching button.
+  Playback stops promptly; in-flight cloud requests may finish but their output
+  is discarded. Piper generation can be interrupted. Already-sent chatbox text
+  is not erased. Busy state clears after worker cleanup.
+- **Transcript preview:** recognized speech appears in the manual text editor.
+  A configurable 0–60 second delay controls auto-send (default 3 seconds).
+  Click Edit or type to pause indefinitely, then use Speak / send now. New
+  recognition never overwrites an unsent draft. Clear the editor to resume
+  recognition after cancelling a draft. Disable preview for immediate output.
+- **Ctrl+Alt+L:** switch between Polish and English for recognition AND output,
+  avoiding translation when speaking the same language. Configure another pair
+  in Roleplay settings. Voice choices and Piper model selections are remembered
+  by target language. Install/select a matching voice/model where necessary.
+  Pending drafts pause when switching language.
+- **Audio recovery:** devices refresh every 5 seconds or via Refresh audio devices.
+  Microphone capture failures are logged, and requested listening resumes when
+  the selected microphone reconnects. Cancel listening to disable recovery.
+  Missing outputs are retained, never silently routed to another device; after
+  reconnecting, submit the failed message again.
 
-Getting started:
-1. Run the executable and choose your microphone and speech output device.
-2. Select an installed Windows desktop voice under Show Speech settings.
-3. Choose your virtual cable as output for VRChat; enable OSC for chatbox output.
-4. Configure your own DeepL/AWS credentials only if using those services.
-5. Roleplay settings include global hotkeys; enable them to use shortcuts while VRChat is focused.
+Hotkeys are editable under Roleplay → Personality, delivery and hotkeys. Enable
+Global Windows hotkeys there to use them while VRChat is focused.
 
-Notes:
-- This first public Deluxe build is a release candidate. CI verifies packaged GUI
-  startup and real SAPI WAV generation; live microphone/virtual cable/VRChat use
-  still needs testing on user hardware.
-- Genuine whisper is supported through Polly; local providers support pacing
-  and the deliberate malfunction stutter.
-- Piper is optional and external to this executable. Install Piper separately,
-  then choose its piper.exe backend and downloaded voice model in Speech settings.
-- Speech recognition still uses Google; this is not a fully offline application.
-- Standard OSC chatbox input cannot embed images.
-- The executable is unsigned. No code-signing certificate was supplied.
-- Logs: %APPDATA%/VRChat Speech Assistant/logs. No shared API keys are bundled.
+All prior features remain: optional Polly fallback, external Piper backend,
+DeepL translation, pasted text speech, nickname corrections, chatbox keyword
+additions, personality presets and diagnostic logs.
+
+CI checks the packaged GUI, real synchronous/asynchronous Windows SAPI WAV
+synthesis, preview controls and language switching. Actual microphone/virtual
+cable reconnects and VRChat use still need user hardware testing, so this is a
+release candidate. Google recognition remains online; Piper requires its own
+backend and voice assets. The executable remains unsigned.

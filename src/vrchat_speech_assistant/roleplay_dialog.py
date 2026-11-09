@@ -2,6 +2,7 @@
 from PySide6 import QtWidgets, QtGui
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS
 from vrchat_speech_assistant.hotkeys import parse_hotkey
+from vrchat_speech_assistant.languages import GOOGLE, DEEPL
 
 
 class RoleplayDialog(QtWidgets.QDialog):
@@ -30,6 +31,16 @@ class RoleplayDialog(QtWidgets.QDialog):
         self.global_keys.setChecked(settings.getboolean("global_hotkeys"))
         layout.addWidget(self.global_keys)
         layout.addWidget(QtWidgets.QLabel("With global keys off, shortcuts work only while this app is focused. Clear a key to disable it."))
+        self.language_first = QtWidgets.QComboBox()
+        self.language_second = QtWidgets.QComboBox()
+        for combo, field in ((self.language_first, "first"), (self.language_second, "second")):
+            combo.addItems([name for name in GOOGLE if name in DEEPL])
+            combo.setCurrentText(parent.config["LANGUAGES"].get(field))
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(QtWidgets.QLabel("Language hotkey pair (recognition and output):"))
+        row.addWidget(self.language_first)
+        row.addWidget(self.language_second)
+        layout.addLayout(row)
         self.table = QtWidgets.QTableWidget(len(ACTIONS), 3)
         self.table.setHorizontalHeaderLabels(["Action", "Hotkey", "Custom announcement (blank = personality default)"])
         for row, action in enumerate(ACTIONS):
@@ -67,6 +78,8 @@ class RoleplayDialog(QtWidgets.QDialog):
         for row, action in enumerate(ACTIONS):
             settings["key_" + action] = bindings[action]
             settings["phrase_" + action] = self.table.cellWidget(row, 2).text()
+        self.window.config["LANGUAGES"]["first"] = self.language_first.currentText()
+        self.window.config["LANGUAGES"]["second"] = self.language_second.currentText()
         self.window.save_config()
         self.window._init_hotkeys()
         self.accept()

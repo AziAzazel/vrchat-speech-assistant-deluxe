@@ -1,5 +1,6 @@
 """Local Windows SAPI voices, rendered to WAV for selected-device playback."""
 import contextlib
+from vrchat_speech_assistant.output_control import cancellation_event, check_cancelled, OutputCancelled
 import tempfile
 from pathlib import Path
 
@@ -41,10 +42,21 @@ class WindowsSpeech:
                 try:
                     stream.Open(str(path), 3, False)  # SSFMCreateForWrite
                     voice.AudioOutputStream = stream
-                    voice.Speak(text, 16)  # SVSFIsNotXML: pasted text is literal.
+                    if cancellation_event() is None:
+                        voice.Speak(text, 16)  # SVSFIsNotXML
+                    else:
+                        check_cancelled()
+                        voice.Speak(text, 17)  # SVSFIsNotXML | SVSFlagsAsync
+                        while not voice.WaitUntilDone(50):
+                            if cancellation_event().is_set():
+                                voice.Speak("", 2)  # SVSFPurgeBeforeSpeak
+                                check_cancelled()
+                        check_cancelled()
                 finally:
                     stream.Close()
                     del stream, token, voice
+        except OutputCancelled:
+            raise
         except Exception as error:
             raise LocalSynthesisError("Windows speech synthesis failed") from error
 
@@ -81,6 +93,7 @@ class SpeechWithFallback:
         try:
             self.primary.speech(text, voice_id, output_device_name, extra_tags)
         except LocalSynthesisError:
+            check_cancelled()
             if self.fallback_voice == "None":
                 raise
             self.notify()

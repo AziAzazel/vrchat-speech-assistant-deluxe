@@ -13,6 +13,46 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Stop, preview, quick languages and audio recovery (1.16)
+
+**Stop speaking / cancel pending send** or **Ctrl+Alt+S** stops current playback
+and pending transcript auto-send. Local synthesis and Piper generation cooperate
+with cancellation. Google/DeepL/AWS requests already in progress may finish, but
+their cancelled output will not play or be sent to the chatbox. The output worker
+stays busy until cleanup completes; then a new utterance can start. Already-sent
+chatbox text is retained. Animated chatbox sending stops at its next update.
+
+**Preview recognition before sending** is on by default with a 3-second delay.
+Change the delay from 0–60 seconds beside the shared editor (0 means immediate).
+Recognized text scrolls into view and shows a countdown. Click **Edit message /
+pause auto-send** or type to cancel the countdown indefinitely. Click **Speak /
+send now** after editing. Recognition waits while a draft or unsent manual text
+is present. Clear the editor to release a cancelled draft and receive another.
+Editing keeps the recognized message's original Chatbox output setting; manual
+pasted messages still use the separate manual Chatbox checkbox. Changes to
+preview settings or language pause a pending draft instead of sending it.
+
+**Ctrl+Alt+L** switches recognition and output together between English and
+Polish. Choose another pair under Roleplay settings. Keeping source and target
+the same means no DeepL translation. Your selected voices are remembered for each
+target language. Windows voices are matched to English/Polish where recognizable;
+otherwise choose a matching installed voice. Piper models are also remembered
+when selected for a language; no voice models are downloaded automatically.
+
+**Refresh audio devices** and a background scan every 5 seconds rediscover devices
+through fresh PortAudio contexts. A missing microphone stops capture and waits
+for that same selection to return; a capture error does likewise. Listening
+resumes only if it was requested. Use the listening button to cancel recovery.
+Changing input while listening restarts capture on the next device scan.
+A missing output cancels active output, preserves your selected cable/device,
+and never silently falls back to speakers. Reconnect or choose another output,
+then send the message again. No automatic replay is performed. Closed-source
+hardware/driver failures can still require restarting the audio device or app.
+
+The new keys are editable alongside the existing shortcuts. Enable global
+Windows hotkeys to use them while VRChat is focused. Existing settings are kept
+when replacing the executable.
+
 ## Personality, announcements and expressive delivery
 
 Open **Roleplay → Personality, delivery and hotkeys**. This is separate from
@@ -58,6 +98,8 @@ Default hotkeys are editable:
 | Ctrl+Alt+F10 | Next delivery |
 | Ctrl+Alt+F11 | Start/stop listening |
 | Ctrl+Alt+F12 | Speak pasted text |
+| Ctrl+Alt+S | Stop output / cancel auto-send |
+| Ctrl+Alt+L | Switch quick language pair |
 
 By default shortcuts work while this app is focused. Enable **global Windows
 hotkeys** in the dialog to use them while VRChat is focused. Only the configured

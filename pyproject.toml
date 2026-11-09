@@ -12,6 +12,7 @@ dependencies = [
     "logger @ git+https://gitlab.com/ameliend/logger.git@f8b86e939833d11e0dd4286f0e67ecfc6584a29f",
     "pyaudio-devices @ git+https://gitlab.com/ameliend/pyaudio-devices.git@f22f4b371e4b54e091a0967db13246d222811c90",
     "pygame>=2.5.2,<3",
+    "PyAudio>=0.2.14,<0.3",
     "pywin32>=306; sys_platform == 'win32'",
     "PySide6==6.6.0",
     "python_osc>=1.8.3,<2",

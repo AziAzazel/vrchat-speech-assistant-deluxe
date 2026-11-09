@@ -13,6 +13,7 @@ import pygame
 import pygame.mixer
 from botocore.config import Config
 from vrchat_speech_assistant.diagnostics import DATA_DIR
+from vrchat_speech_assistant.output_control import check_cancelled
 
 VOICES_PATH = DATA_DIR / "voices"
 
@@ -35,7 +36,7 @@ class Polly:
     """
 
     def __init__(self, aws_access_key_id: str, aws_secret_access_key: str, region_name: str):
-        my_config = Config(region_name=region_name)
+        my_config = Config(region_name=region_name, connect_timeout=10, read_timeout=30, retries={"max_attempts": 1})
         self.client = boto3.client(
             "polly",
             aws_access_key_id=aws_access_key_id,
@@ -120,12 +121,14 @@ def read_ogg_file(filepath: str, output_device_name: str):
         The name of the output device to use for audio playback.
     """
 
+    check_cancelled()
     pygame.mixer.pre_init(devicename=output_device_name)
     pygame.mixer.init()
     try:
         pygame.mixer.music.load(filepath)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
+            check_cancelled()
             time.sleep(0.02)
     finally:
         pygame.mixer.quit()

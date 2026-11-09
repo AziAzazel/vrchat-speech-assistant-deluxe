@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import wave
+import threading
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
@@ -26,6 +27,11 @@ def smoke_test(report):
     speech.render("Speech assistant build verification.", next(iter(speech.voices)), path)
     with wave.open(str(path)) as audio:
         assert audio.getnframes() > 0
+    from vrchat_speech_assistant.output_control import output_scope
+    with output_scope(threading.Event()):
+        speech.render("Asynchronous speech verification.", next(iter(speech.voices)), path, rate=85)
+    with wave.open(str(path)) as audio:
+        assert audio.getnframes() > 0
     app = QtWidgets.QApplication([])
     darkstyle.apply(app)
     window = VRCSpeechAssistantWindow()
@@ -33,9 +39,19 @@ def smoke_test(report):
     app.processEvents()
     assert window.isVisible()
     assert window.config["SPEECH"]["provider"] == "Windows Speech"
+    window._submit_recognized("Packaged transcript preview")
+    assert window.pending_draft and window.preview_timer.isActive()
+    window.edit_message_button.click()
+    assert not window.preview_timer.isActive()
+    window.stop_speaking()
+    window.manual_text.clear()
+    window.switch_language()
+    assert window.config["SPEECH"]["source_language"] == "Polish"
+    window.switch_language()
+    assert window.config["SPEECH"]["source_language"] == "English"
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed"}), encoding="utf-8")
 
 
 def main():

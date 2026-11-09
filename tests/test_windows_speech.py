@@ -110,3 +110,26 @@ def test_com_initialized_and_released_on_error(monkeypatch):
             raise RuntimeError("failed")
     com.CoInitialize.assert_called_once()
     com.CoUninitialize.assert_called_once()
+
+
+def test_sapi_cancellation_purges_and_never_falls_back(monkeypatch, tmp_path):
+    import threading
+    from vrchat_speech_assistant import windows_speech
+    from vrchat_speech_assistant.output_control import output_scope, OutputCancelled
+    voice, token, stream = Mock(), Mock(), Mock()
+    event = threading.Event()
+    def wait(milliseconds):
+        event.set()
+        return False
+    voice.WaitUntilDone.side_effect = wait
+    @contextlib.contextmanager
+    def session():
+        yield lambda name: {"SAPI.SpVoice": voice, "SAPI.SpObjectToken": token, "SAPI.SpFileStream": stream}[name]
+    monkeypatch.setattr(windows_speech, "sapi", session)
+    speech = WindowsSpeech.__new__(WindowsSpeech)
+    speech.voices = {"Local": "id"}
+    with output_scope(event), pytest.raises(OutputCancelled):
+        speech.render("long sentence", "Local", tmp_path / "out.wav")
+    assert voice.Speak.call_args_list[0].args == ("long sentence", 17)
+    assert voice.Speak.call_args_list[-1].args == ("", 2)
+    stream.Close.assert_called_once()

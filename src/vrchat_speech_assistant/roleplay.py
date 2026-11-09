@@ -10,6 +10,8 @@ DELIVERIES = {"Normal": {}, "Measured": {"rate": 85}, "Warning": {"rate": 115},
               "Malfunction": {"rate": 75, "stutter": True}, "Confidential whisper": {"whispered": True}}
 ACTIONS = ["greeting", "system", "uncertain", "goodbye", "cycle_personality", "cycle_delivery", "toggle_listener", "speak_paste"]
 DEFAULT_HOTKEYS = {action: f"Ctrl+Alt+F{index+5}" for index, action in enumerate(ACTIONS)}
+ACTIONS += ["stop_speaking", "switch_language"]
+DEFAULT_HOTKEYS.update(stop_speaking="Ctrl+Alt+S", switch_language="Ctrl+Alt+L")
 
 
 def spoken_delivery(text, tags):

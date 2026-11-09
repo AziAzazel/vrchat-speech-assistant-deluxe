@@ -17,6 +17,7 @@ def window(gui, monkeypatch):
     monkeypatch.setattr(main.VRCSpeechAssistantWindow, "_init_translator", lambda self: None)
     monkeypatch.setattr(main.VRCSpeechAssistantWindow, "_check_selected_speech_provider", lambda self: None)
     window = main.VRCSpeechAssistantWindow()
+    window.preview_checkbox.setChecked(False)
     window.speech_provider = Mock()
     yield window
     wait_output(app, window)
@@ -136,6 +137,7 @@ def test_device_zero_can_start_and_stop(gui, window, monkeypatch):
     microphone = Mock()
     monkeypatch.setattr(main.speech_recognition, "Microphone", microphone)
     monkeypatch.setattr(main.speech_recognition, "Recognizer", lambda: recognizer)
+    monkeypatch.setattr(main, "BackgroundListener", Mock())
     window.start_listener()
     microphone.assert_called_once_with(device_index=0)
     assert window.is_listener_running
@@ -262,7 +264,7 @@ def test_roleplay_settings_save_and_preserve_deepl_formality(gui, window):
     assert window.config["ROLEPLAY"]["delivery"] == "Measured"
     assert window.config["ROLEPLAY"]["phrase_greeting"] == "Custom greeting"
     assert window.config["TRANSLATOR"]["formality"] == "Informal"
-    assert len(window.shortcuts) == 8
+    assert len(window.shortcuts) == 10
     window.config["ROLEPLAY"]["delivery"] = "Normal"
 
 
@@ -284,3 +286,150 @@ def test_missing_audio_api_does_not_prevent_startup(gui, monkeypatch):
     app, main = gui
     monkeypatch.setattr(main, "get_devices", Mock(side_effect=AttributeError("No WASAPI device")))
     assert main.VRCSpeechAssistantWindow._detect_devices("output") == []
+
+
+def test_preview_countdown_auto_send(gui, window):
+    from PySide6.QtTest import QTest
+    app, main = gui
+    window.preview_checkbox.setChecked(True)
+    window.preview_delay.setValue(.1)
+    window._submit_recognized("Hello preview", window.recognition_epoch)
+    assert window.pending_draft
+    assert window.manual_text.toPlainText() == "Hello preview"
+    window.speech_provider.speech.assert_not_called()
+    QTest.qWait(200)
+    wait_output(app, window)
+    assert window.speech_provider.speech.call_args.args[0] == "Hello preview"
+
+
+def test_edit_pauses_preview_and_keeps_later_recognition_out(gui, window):
+    from PySide6.QtTest import QTest
+    app, main = gui
+    window.preview_checkbox.setChecked(True)
+    window.preview_delay.setValue(.1)
+    window._submit_recognized("wrong nickname")
+    window.edit_message_button.click()
+    window.manual_text.setPlainText("Correct nickname")
+    window._submit_recognized("must not overwrite")
+    QTest.qWait(200)
+    window.speech_provider.speech.assert_not_called()
+    assert window.manual_text.toPlainText() == "Correct nickname"
+    window.speak_button.click()
+    wait_output(app, window)
+    assert window.speech_provider.speech.call_args.args[0] == "Correct nickname"
+
+
+def test_stop_cancels_preview_and_late_recognition(gui, window):
+    app, main = gui
+    window.preview_checkbox.setChecked(True)
+    window._submit_recognized("Keep draft")
+    old_epoch = window.recognition_epoch
+    window.stop_speaking()
+    window._submit_recognized("Old recognition result", old_epoch)
+    assert not window.preview_timer.isActive()
+    assert not window.pending_draft
+    assert window.manual_text.toPlainText() == "Keep draft"
+    window.speech_provider.speech.assert_not_called()
+
+
+def test_stop_during_speech_prevents_chatbox_and_next_output_works(gui, window, monkeypatch):
+    import threading
+    from vrchat_speech_assistant.output_control import check_cancelled
+    app, main = gui
+    entered = threading.Event()
+    def speak(*args):
+        entered.set()
+        while True:
+            check_cancelled()
+            time.sleep(.01)
+    window.speech_provider.speech.side_effect = speak
+    chatbox = Mock()
+    monkeypatch.setattr(main, "write_chatbox", chatbox)
+    window.manual_chatbox.setChecked(True)
+    window.manual_text.setPlainText("long message")
+    window.speak_manual_text()
+    assert entered.wait(1)
+    window.roleplay_action("stop_speaking")
+    wait_output(app, window)
+    chatbox.assert_not_called()
+    window.speech_provider.speech.side_effect = None
+    window.manual_text.setPlainText("new message")
+    window.speak_manual_text()
+    wait_output(app, window)
+    assert chatbox.call_args.args[1] == "new message"
+
+
+def test_language_hotkey_switches_both_and_restores_voice(gui, window, monkeypatch):
+    app, main = gui
+    window.config["LANGUAGES"].update(first="English", second="Polish")
+    window.config["SPEECH"].update(source_language="English", target_language="English", provider="Windows Speech")
+    window.windows_speech = Mock(voices={"Microsoft David English": "en", "Microsoft Paulina Polish": "pl"})
+    window._append_voices_for_selected_provider()
+    window.speech_voice_combo.setCurrentText("Microsoft David English")
+    window.roleplay_action("switch_language")
+    assert window.config["SPEECH"]["source_language"] == "Polish"
+    assert window.config["SPEECH"]["target_language"] == "Polish"
+    assert window.speech_voice_combo.currentText() == "Microsoft Paulina Polish"
+    window.roleplay_action("switch_language")
+    assert window.speech_voice_combo.currentText() == "Microsoft David English"
+    assert window.config["SPEECH"]["source_language"] == "English"
+
+
+def test_reconnect_preserves_routing_and_resumes_only_requested_listener(gui, window, monkeypatch):
+    import threading
+    app, main = gui
+    window.listener_session = Mock()
+    window.listener_session.thread.is_alive.return_value = False
+    window.listener = Mock()
+    window.is_listener_running = True
+    window._apply_devices([], [])
+    assert window.recover_listener and not window.is_listener_running
+    assert window.config["SPEECH"]["output_device"] == "Test device"
+    start = Mock()
+    monkeypatch.setattr(window, "start_listener", start)
+    window._apply_devices([{"name": "Test device", "index": 5}], [{"name": "Test device", "index": 8}])
+    start.assert_called_once()
+    window.stop_listener()  # Explicit cancellation must disable recovery.
+    start.reset_mock()
+    window._apply_devices([{"name": "Test device", "index": 5}], [{"name": "Test device", "index": 8}])
+    start.assert_not_called()
+
+
+def test_stale_capture_failure_cannot_restart_cancelled_listener(gui, window):
+    import threading
+    app, main = gui
+    session = Mock(stopped=threading.Event())
+    window.listener_session = session
+    session.stopped.set()
+    window._capture_failed(OSError("old failure"), session)
+    assert not window.recover_listener
+
+
+def test_clearing_an_unsent_editor_resumes_recognition(gui, window):
+    window.manual_text.setPlainText("unsent manual text")
+    window._submit_recognized("blocked")
+    assert window.manual_text.toPlainText() == "unsent manual text"
+    window.manual_text.clear()
+    window.preview_checkbox.setChecked(True)
+    window._submit_recognized("new recognition")
+    assert window.manual_text.toPlainText() == "new recognition"
+
+
+def test_missing_output_blocks_cloud_and_preserves_draft(gui, window, monkeypatch):
+    window.output_devices = []
+    window.manual_text.setPlainText("do not send yet")
+    monkeypatch.setattr(window, "refresh_devices", Mock())
+    window.speak_manual_text()
+    window.speech_provider.speech.assert_not_called()
+    assert window.editor_dirty
+    assert window.manual_text.toPlainText() == "do not send yet"
+
+
+def test_language_shortcut_remembers_existing_piper_model(gui, window):
+    window.config["LANGUAGES"].update(first="English", second="Polish")
+    window.config["SPEECH"].update(provider="Piper (offline)", source_language="English", target_language="English",
+                                   piper_model="english.onnx", piper_model_Polish="polish.onnx")
+    window.switch_language()
+    assert window.config["SPEECH"]["piper_model"] == "polish.onnx"
+    window.switch_language()
+    assert window.config["SPEECH"]["piper_model"] == "english.onnx"

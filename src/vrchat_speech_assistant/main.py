@@ -6,6 +6,7 @@ import configparser
 import json
 import logging
 import threading
+import time
 import contextlib
 import sys
 import webbrowser
@@ -16,9 +17,11 @@ from threading import Thread
 
 import speech_recognition
 from chatbox_osc import FONTS, write_chatbox
-from pyaudio_devices import get_devices
+from vrchat_speech_assistant.audio_devices import get_devices
+from vrchat_speech_assistant.listener import BackgroundListener
+from vrchat_speech_assistant.output_control import output_scope, check_cancelled, OutputCancelled, CancellableOSC
 from PySide6 import QtGui, QtWidgets
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
@@ -98,7 +101,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     status_signal = Signal(str, str)
     activity_signal = Signal(bool)
-    recognized_signal = Signal(str)
+    recognized_signal = Signal(str, int)
+    devices_signal = Signal(object, object)
+    capture_failed_signal = Signal(object, object)
+    output_failed_signal = Signal()
     finished_signal = Signal()
     command_signal = Signal(object)
 
@@ -111,6 +117,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "beep": True,
             "input_device": None,
         },
+        "PREVIEW": {"enabled": True, "delay": 3.0},
+        "LANGUAGES": {"first": "English", "second": "Polish"},
         "API": {
             "deepl_api_key": "",
             "aws_access_key": "",
@@ -155,6 +163,22 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.recognized_signal.connect(self._submit_recognized)
         self.finished_signal.connect(self._finish_output)
         self.command_signal.connect(lambda command: command())
+        self.devices_signal.connect(self._apply_devices)
+        self.capture_failed_signal.connect(self._capture_failed)
+        self.output_failed_signal.connect(self.refresh_devices)
+        self.cancel_output = threading.Event()
+        self.recognition_epoch = 0
+        self.listener_session = None
+        self.recover_listener = False
+        self.device_scan_busy = False
+        self.pending_draft = False
+        self.editor_dirty = False
+        self.loading_editor = False
+        self.preview_timer = QTimer(self)
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.timeout.connect(self.speak_manual_text)
+        self.countdown_timer = QTimer(self)
+        self.countdown_timer.timeout.connect(self._update_countdown)
         self.output_busy = False
         self.windows_speech = None
         self._closing = False
@@ -175,12 +199,15 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.global_hotkeys = None
         self.shortcuts = []
         self._init_hotkeys()
+        self.device_timer = QTimer(self)
+        self.device_timer.timeout.connect(self.refresh_devices)
+        self.device_timer.start(5000)
 
     @staticmethod
     def _detect_devices(kind):
         try:
             return get_devices(device_type=kind)
-        except (OSError, AttributeError):
+        except Exception:
             # A headless runner or disconnected audio API can expose no devices.
             record_failure("Enumerate " + kind + " devices", *sys.exc_info()[::2])
             return []
@@ -445,11 +472,37 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.manual_text.setPlaceholderText("Paste a ChatGPT answer or type a message…")
         self.manual_text.setMaximumHeight(90)
         main_layout.addWidget(self.manual_text)
+        self.manual_text.textChanged.connect(self._editor_changed)
+        self.preview_checkbox = QtWidgets.QCheckBox("Preview recognition before sending")
+        self.preview_checkbox.setChecked(self.config["PREVIEW"].getboolean("enabled"))
+        self.preview_checkbox.toggled.connect(self._preview_settings_changed)
+        main_layout.addWidget(self.preview_checkbox)
+        delay_row = QtWidgets.QHBoxLayout()
+        delay_row.addWidget(QtWidgets.QLabel("Auto-send delay (seconds):"))
+        self.preview_delay = QtWidgets.QDoubleSpinBox()
+        self.preview_delay.setRange(0, 60)
+        self.preview_delay.setDecimals(1)
+        self.preview_delay.setValue(self.config["PREVIEW"].getfloat("delay"))
+        self.preview_delay.valueChanged.connect(self._preview_settings_changed)
+        delay_row.addWidget(self.preview_delay)
+        main_layout.addLayout(delay_row)
+        self.draft_status = QtWidgets.QLabel("Recognition and manual input share this editor.")
+        self.draft_status.setWordWrap(True)
+        main_layout.addWidget(self.draft_status)
+        self.edit_message_button = QtWidgets.QPushButton("Edit message / pause auto-send")
+        self.edit_message_button.clicked.connect(self.edit_pending_message)
+        main_layout.addWidget(self.edit_message_button)
         self.manual_chatbox = QtWidgets.QCheckBox("Also send pasted text to VRChat Chatbox")
         main_layout.addWidget(self.manual_chatbox)
-        self.speak_button = QtWidgets.QPushButton("Speak pasted text")
+        self.speak_button = QtWidgets.QPushButton("Speak / send now")
         self.speak_button.clicked.connect(self.speak_manual_text)
         main_layout.addWidget(self.speak_button)
+        self.stop_speech_button = QtWidgets.QPushButton("Stop speaking / cancel pending send")
+        self.stop_speech_button.clicked.connect(self.stop_speaking)
+        main_layout.addWidget(self.stop_speech_button)
+        refresh_button = QtWidgets.QPushButton("Refresh audio devices")
+        refresh_button.clicked.connect(self.refresh_devices)
+        main_layout.addWidget(refresh_button)
         main_layout.addWidget(chatbox_delete_button)
         main_layout.addWidget(self.log_line_edit)
         main_layout.addWidget(self.progressbar)
@@ -539,7 +592,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if self._closing:
             return
         settings = self.config["ROLEPLAY"]
-        if action == "cycle_personality":
+        if action == "stop_speaking":
+            self.stop_speaking()
+        elif action == "switch_language":
+            self.switch_language()
+        elif action == "cycle_personality":
             names = list(PERSONALITIES)
             current = settings.get("personality", "Neutral")
             name = names[(names.index(current) + 1) % len(names)] if current in names else names[0]
@@ -572,6 +629,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 self._start_output(text, self.config["CHATBOX"].getboolean("enabled"), manual=True)
 
     def _on_source_language_combo_clicked(self, current_text: str):
+        self.recognition_epoch += 1
         self.config["SPEECH"]["source_language"] = current_text
         self.save_config()
         # Disable target language combo if translator attribute is None
@@ -662,6 +720,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 self.log_error("The matching .onnx.json file must be beside the voice model.")
                 return
             self.config["SPEECH"]["piper_model"] = path
+            self.config["SPEECH"]["piper_model_" + self.config["SPEECH"].get("target_language")] = path
             self._append_voices_for_selected_provider()
             self._check_selected_speech_provider()
 
@@ -681,6 +740,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             del self.extra_tags["pitch"]
 
     def _on_input_device_clicked(self, current_text: str):
+        if self.is_listener_running:
+            self.stop_listener()
+            self.recover_listener = True
         self.config["APP"]["input_device"] = current_text
         self.save_config()
 
@@ -719,6 +781,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def _on_voice_combo_clicked(self, current_text: str):
         self.config["SPEECH"]["voice"] = current_text
+        self.config["SPEECH"]["voice_" + self.config["SPEECH"].get("target_language")] = current_text
         self.save_config()
 
     def _on_chatbox_delete_button_clicked(self):
@@ -808,7 +871,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.toggle_thread()
 
     def _update_activate_button(self):
-        if not self.is_listener_running:
+        if self.recover_listener:
+            self.toggle_activate_button.setText("CANCEL MICROPHONE RECOVERY")
+        elif not self.is_listener_running:
             self.toggle_activate_button.setText("START LISTENING")
             self.toggle_activate_button.setStyleSheet("font-weight: bold")
         else:
@@ -921,7 +986,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def _voice_activity(self, activity: bool):
         chatbox_enabled = self.config["CHATBOX"].getboolean("enabled")
         self.progressbar.setMaximum(0 if activity else 100)
-        if chatbox_enabled:
+        if chatbox_enabled or not activity:
             try:
                 self.osc_client.send_message("/chatbox/typing", bool(activity))
             except OSError:
@@ -952,40 +1017,144 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def toggle_thread(self):
         """Start or stop the listener thread."""
-        if not self.is_listener_running:
+        if not self.is_listener_running and not self.recover_listener:
             self.start_listener()
         else:
             self.stop_listener()
         self._update_activate_button()
 
+    def refresh_devices(self):
+        if self._closing or self.device_scan_busy:
+            return
+        self.device_scan_busy = True
+        def scan():
+            self.devices_signal.emit(self._detect_devices("input"), self._detect_devices("output"))
+        Thread(target=scan, name="audio-device-refresh", daemon=True).start()
+
+    def _apply_devices(self, inputs, outputs):
+        self.device_scan_busy = False
+        if self._closing:
+            return
+        old_index = self._get_input_device_index(self.config["APP"].get("input_device"))
+        self.input_devices, self.output_devices = inputs, outputs
+        for combo, devices, chosen in (
+            (self.input_device_combo, inputs, self.config["APP"].get("input_device")),
+            (self.output_device_combo, outputs, self.config["SPEECH"].get("output_device")),
+        ):
+            names = [d["name"] for d in devices]
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(names)
+            if chosen:
+                if chosen not in names:
+                    combo.addItem(chosen)
+                    combo.setItemData(combo.count() - 1, "Disconnected: reconnect or choose a device", Qt.ToolTipRole)
+                combo.setCurrentText(chosen)
+            combo.blockSignals(False)
+        chosen_input = self.config["APP"].get("input_device")
+        new_index = self._get_input_device_index(chosen_input)
+        if self.is_listener_running and (new_index is None or new_index != old_index):
+            self.stop_listener()
+            self.recover_listener = True
+        if self.recover_listener and new_index is not None:
+            if self.listener_session is None or not self.listener_session.thread.is_alive():
+                self.start_listener()
+        self._update_activate_button()
+        chosen_output = self.config["SPEECH"].get("output_device")
+        if chosen_output and chosen_output not in [d["name"] for d in outputs]:
+            if self.output_busy:
+                self.cancel_output.set()
+            self.log_warning("Selected output is disconnected. Reconnect it or select another device; no audio was rerouted.")
+
+    def _capture_failed(self, error, session):
+        if self._closing or session is not self.listener_session or session.stopped.is_set():
+            return
+        record_failure("Microphone capture", type(error), error.__traceback__)
+        self.is_listener_running = False
+        self.recover_listener = True
+        self.recognition_epoch += 1
+        self._update_activate_button()
+        self.log_warning("Microphone disconnected or failed. Waiting for device recovery.")
+        self.refresh_devices()
+
+    def switch_language(self):
+        first, second = self.config["LANGUAGES"].get("first"), self.config["LANGUAGES"].get("second")
+        if first not in GOOGLE or second not in GOOGLE or first not in DEEPL or second not in DEEPL:
+            self.log_error("Choose supported quick-switch languages in Roleplay settings.")
+            return
+        self.recognition_epoch += 1
+        self.edit_pending_message()
+        current = self.config["SPEECH"].get("source_language")
+        language = second if current == first else first
+        previous_target = self.config["SPEECH"].get("target_language")
+        self.config["SPEECH"]["voice_" + previous_target] = self.config["SPEECH"].get("voice")
+        for combo in (self.source_language_combo, self.target_language_combo):
+            combo.blockSignals(True)
+            combo.setCurrentText(language)
+            combo.blockSignals(False)
+        self.config["SPEECH"]["source_language"] = language
+        self.config["SPEECH"]["target_language"] = language
+        saved_voice = self.config["SPEECH"].get("voice_" + language)
+        if self.config["SPEECH"].get("provider") == "Piper (offline)" and self.config["SPEECH"].get("piper_model"):
+            self.config["SPEECH"]["piper_model_" + previous_target] = self.config["SPEECH"].get("piper_model")
+        saved_model = self.config["SPEECH"].get("piper_model_" + language)
+        if saved_model:
+            self.config["SPEECH"]["piper_model"] = saved_model
+        if not saved_voice and self.config["SPEECH"].get("provider") == "Windows Speech" and self.windows_speech:
+            hints = {"Polish": ("polish", "polski", "paulina"), "English": ("english", "david", "zira")}.get(language, ())
+            saved_voice = next((name for name in self.windows_speech.voices if any(hint in name.lower() for hint in hints)), None)
+        self._append_voices_for_selected_provider()
+        if saved_voice and self.speech_voice_combo.findText(saved_voice) >= 0:
+            self.speech_voice_combo.setCurrentText(saved_voice)
+        self._check_selected_speech_provider()
+        self.save_config()
+        self.log_info("Language: " + language + ". Choose a matching voice/model if needed; pending draft paused.")
+
     def start_listener(self):
         """Start the listener thread."""
+        if self.listener_session and self.listener_session.thread.is_alive():
+            self.recover_listener = True
+            return
         input_device_name = self.config["APP"].get("input_device")
         input_device_index = self._get_input_device_index(input_device_name)
         if input_device_index is None:
+            self.recover_listener = True
+            self.log_warning("Microphone missing. Reconnect it or choose another input device.")
+            self.refresh_devices()
             return
         try:
             microphone = speech_recognition.Microphone(device_index=input_device_index)
             recognizer = speech_recognition.Recognizer()
+            recognizer.operation_timeout = 15
             recognizer.pause_threshold = 0.5
             recognizer.non_speaking_duration = 0.5
             recognizer.dynamic_energy_threshold = False
             winsound.PlaySound(str(RESOURCES_PATH / "on.wav"), winsound.SND_ASYNC)
-            self.listener = recognizer.listen_in_background(microphone, self.recognize)
+            session = BackgroundListener(
+                recognizer, microphone, self.recognize,
+                lambda error: self.capture_failed_signal.emit(error, session), generation=lambda: self.recognition_epoch)
+            self.listener_session = session
+            self.listener = self.listener_session.stop
+            self.listener_session.start()
             self.is_listener_running = True
+            self.recover_listener = False
             self.log_info("Listening...")
         except Exception:
             record_failure("Start microphone", *sys.exc_info()[::2])
-            self.log_error("Could not open microphone. Check the selected device and diagnostic logs.")
+            self.recover_listener = True
+            self.log_error("Could not open microphone. Waiting for device recovery; see diagnostic logs.")
 
     def stop_listener(self):
         """Stop the listener thread."""
         winsound.PlaySound(str(RESOURCES_PATH / "off.wav"), winsound.SND_ASYNC)
-        self.listener(wait_for_stop=False)  # Stop the listener
+        if self.listener:
+            self.listener(wait_for_stop=False)
+        self.recognition_epoch += 1
+        self.recover_listener = False
         self.is_listener_running = False
         self.log_info("Listener stopped.")
 
-    def recognize(self, recognizer: speech_recognition.Recognizer, audio: speech_recognition.Microphone):
+    def recognize(self, recognizer: speech_recognition.Recognizer, audio: speech_recognition.Microphone, epoch=None):
         """Use Google's Speech Recognition API to recognize an audio file into a text string.
 
         Translate and speech the text if the attributes translator and / or speech_provider
@@ -1003,7 +1172,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         audio : `speech_recognition.Microphone`
             A `Microphone` instance from `speech_recognition` module as the source of audio input.
         """
-        if self._closing or self.output_busy:
+        epoch = self.recognition_epoch if epoch is None else epoch
+        if self._closing or self.output_busy or self.pending_draft or self.editor_dirty or epoch != self.recognition_epoch:
             return  # Do not feed synthesized output back into the pipeline.
         try:
             source = self.config["SPEECH"].get("source_language")
@@ -1013,18 +1183,94 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             if not self._closing and text.lower() not in ("stop", "stoppe", "staff"):
                 if self.config["APP"].getboolean("beep"):
                     winsound.PlaySound(str(RESOURCES_PATH / "recognized.wav"), winsound.SND_ASYNC)
-                self.recognized_signal.emit(text)
+                self.recognized_signal.emit(text, epoch)
         except speech_recognition.UnknownValueError:
             self.status_signal.emit("warning", "The voice recognition did not understand.")
         except Exception:
             record_failure("Recognition", *sys.exc_info()[::2])
             self.status_signal.emit("error", "Recognition failed. See diagnostic logs.")
 
-    def _submit_recognized(self, text):
-        self._start_output(text, self.config["CHATBOX"].getboolean("enabled"))
+    def _submit_recognized(self, text, epoch=None):
+        if epoch is not None and epoch != self.recognition_epoch:
+            return
+        if self._closing or self.output_busy or self.pending_draft or self.editor_dirty:
+            return
+        if not self.preview_checkbox.isChecked():
+            self._start_output(text, self.config["CHATBOX"].getboolean("enabled"))
+            return
+        self.pending_draft = True
+        self.loading_editor = True
+        self.manual_text.setPlainText(text)
+        scroll = self.findChild(QtWidgets.QScrollArea)
+        if scroll:
+            scroll.ensureWidgetVisible(self.manual_text)
+        self.loading_editor = False
+        self.editor_dirty = False
+        delay = self.preview_delay.value()
+        self.draft_deadline = time.monotonic() + delay
+        self.preview_timer.start(round(delay * 1000))
+        self.countdown_timer.start(100)
+        self._update_countdown()
+
+    def _update_countdown(self):
+        if self.preview_timer.isActive():
+            self.draft_status.setText(f"Auto-send in {max(0, self.draft_deadline - time.monotonic()):.1f}s — click Edit or type to pause.")
+
+    def _preview_settings_changed(self, *args):
+        self.config["PREVIEW"]["enabled"] = str(self.preview_checkbox.isChecked())
+        self.config["PREVIEW"]["delay"] = str(self.preview_delay.value())
+        self.save_config()
+        if self.pending_draft:
+            self.edit_pending_message()
+
+    def _editor_changed(self):
+        if not self.loading_editor:
+            if not self.manual_text.toPlainText().strip():
+                self.editor_dirty = False
+                self.pending_draft = False
+                self.preview_timer.stop()
+                self.countdown_timer.stop()
+                self.draft_status.setText("Editor cleared; recognition can fill the next draft.")
+                return
+            self.editor_dirty = True
+            if self.pending_draft:
+                self.edit_pending_message(focus=False)
+
+    def edit_pending_message(self, focus=True):
+        self.preview_timer.stop()
+        self.countdown_timer.stop()
+        if self.pending_draft:
+            self.editor_dirty = True
+            self.draft_status.setText("Auto-send paused. Edit, then click Speak / send now.")
+        if focus:
+            self.manual_text.setFocus()
 
     def speak_manual_text(self):
-        self._start_output(self.manual_text.toPlainText(), self.manual_chatbox.isChecked(), manual=True)
+        self.preview_timer.stop()
+        self.countdown_timer.stop()
+        pending = self.pending_draft
+        accepted = self._start_output(
+            self.manual_text.toPlainText(),
+            self.config["CHATBOX"].getboolean("enabled") if pending else self.manual_chatbox.isChecked(),
+            manual=not pending)
+        if accepted:
+            self.pending_draft = False
+            self.editor_dirty = False
+            self.draft_status.setText("Message submitted.")
+        elif pending:
+            self.edit_pending_message(focus=False)
+
+    def stop_speaking(self):
+        self.cancel_output.set()
+        self.recognition_epoch += 1
+        self.preview_timer.stop()
+        self.countdown_timer.stop()
+        if self.pending_draft:
+            self.editor_dirty = True
+        self.pending_draft = False
+        self.draft_status.setText("Stopped. Draft retained; send it manually or clear the editor to resume recognition.")
+        self._voice_activity(False)
+        self.log_info("Output cancelled. Any in-flight cloud request will be discarded when it returns.")
 
     def _start_output(self, text, send_chatbox, manual=False):
         if self._closing or self.output_busy:
@@ -1040,6 +1286,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                        or self.config["SPEECH"].get("voice") == "None"):
             self.log_error("Enable Speech and configure a working speech provider first.")
             return
+        if self.speech_provider and self.config["SPEECH"].getboolean("enabled"):
+            selected = self.config["SPEECH"].get("output_device")
+            if not selected or selected not in [d["name"] for d in self.output_devices]:
+                self.log_warning("Select or reconnect the output device, then send again. No audio was rerouted.")
+                self.refresh_devices()
+                return
         config = {section: dict(self.config[section]) for section in ("SPEECH", "TRANSLATOR", "CHATBOX")}
         provider, translator = self.speech_provider, self.translator
         tags, corrections = dict(self.extra_tags), dict(self.corrections)
@@ -1050,7 +1302,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             return
         tags.update(DELIVERIES.get(delivery, {}))
         rules = dict(self.chatbox_rules) if self.config["CHATBOX"].getboolean("keyword_additions") else {}
-        client = self.osc_client
+        client = CancellableOSC(self.osc_client)
+        event = threading.Event()
+        self.cancel_output = event
         self.output_busy = True
         self.speak_button.setEnabled(False)
         self._voice_activity(True)
@@ -1059,6 +1313,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             stage = "Nickname correction"
             try:
                 result = correct_nicknames(text.strip(), corrections)
+                check_cancelled()
                 corrected_source = result
                 speech = config["SPEECH"]
                 if translator and speech["source_language"] != speech["target_language"]:
@@ -1070,9 +1325,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                         split_sentences=int(options["split_sentences"]),
                         formality={"Default": "default", "Formal": "prefer_more", "Informal": "prefer_less"}[options["formality"]],
                     ).text
+                check_cancelled()
                 if provider and speech["voice"] != "None":
                     stage = "Synthesis/audio playback"
                     provider.speech(spoken_delivery(result, tags), speech["voice"], speech["output_device"], tags)
+                check_cancelled()
                 if send_chatbox:
                     stage = "Chatbox output"
                     chatbox_text = decorate_chatbox(result, rules, corrected_source)
@@ -1084,13 +1341,21 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                                   chunk_length=25 if config["CHATBOX"]["animation"].lower() == "true" else 0)
                 logger.info("Output completed; manual=%s; chatbox=%s", manual, send_chatbox)
                 self.status_signal.emit("info", "Output completed.")
+            except OutputCancelled:
+                self.status_signal.emit("info", "Speech stopped; unsent chatbox output cancelled.")
             except Exception:
+                if stage == "Synthesis/audio playback":
+                    self.output_failed_signal.emit()
                 record_failure(stage, *sys.exc_info()[::2])
                 self.status_signal.emit("error", stage + " failed. See diagnostic logs.")
             finally:
                 self.finished_signal.emit()
 
-        Thread(target=output, name="speech-output", daemon=True).start()
+        def scoped_output():
+            with output_scope(event):
+                output()
+        Thread(target=scoped_output, name="speech-output", daemon=True).start()
+        return True
 
     def _finish_output(self):
         self.output_busy = False
@@ -1206,6 +1471,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             event.ignore()
             return
         self._closing = True
+        self.preview_timer.stop()
+        self.countdown_timer.stop()
+        self.device_timer.stop()
         if self.global_hotkeys:
             self.global_hotkeys.stop()
         if self.listener:
