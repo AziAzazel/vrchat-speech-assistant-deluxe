@@ -1,11 +1,11 @@
-VRChat Speech Assistant Deluxe 1.16.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.16.0 release candidate 2
 
 Download **VRChatSpeechAssistantDeluxe.exe** below (Windows x64, no Python needed
 for Windows speech/Polly). Replace your old executable; existing settings remain
 in %APPDATA%/VRChat Speech Assistant.
 
 New live-conversation controls:
-- **Ctrl+Alt+S:** stop speaking and cancel pending auto-send, with a matching button.
+- **Ctrl+Shift+F11:** stop speaking and cancel pending auto-send, with a matching button.
   Playback stops promptly; in-flight cloud requests may finish but their output
   is discarded. Piper generation can be interrupted. Already-sent chatbox text
   is not erased. Busy state clears after worker cleanup.
@@ -14,7 +14,7 @@ New live-conversation controls:
   Click Edit or type to pause indefinitely, then use Speak / send now. New
   recognition never overwrites an unsent draft. Clear the editor to resume
   recognition after cancelling a draft. Disable preview for immediate output.
-- **Ctrl+Alt+L:** switch between Polish and English for recognition AND output,
+- **Ctrl+Shift+F12:** switch between Polish and English for recognition AND output,
   avoiding translation when speaking the same language. Configure another pair
   in Roleplay settings. Voice choices and Piper model selections are remembered
   by target language. Install/select a matching voice/model where necessary.

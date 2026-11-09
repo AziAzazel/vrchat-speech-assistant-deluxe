@@ -15,7 +15,7 @@ not implemented in this release.
 
 ## Stop, preview, quick languages and audio recovery (1.16)
 
-**Stop speaking / cancel pending send** or **Ctrl+Alt+S** stops current playback
+**Stop speaking / cancel pending send** or **Ctrl+Shift+F11** stops current playback
 and pending transcript auto-send. Local synthesis and Piper generation cooperate
 with cancellation. Google/DeepL/AWS requests already in progress may finish, but
 their cancelled output will not play or be sent to the chatbox. The output worker
@@ -32,7 +32,7 @@ Editing keeps the recognized message's original Chatbox output setting; manual
 pasted messages still use the separate manual Chatbox checkbox. Changes to
 preview settings or language pause a pending draft instead of sending it.
 
-**Ctrl+Alt+L** switches recognition and output together between English and
+**Ctrl+Shift+F12** switches recognition and output together between English and
 Polish. Choose another pair under Roleplay settings. Keeping source and target
 the same means no DeepL translation. Your selected voices are remembered for each
 target language. Windows voices are matched to English/Polish where recognizable;
@@ -98,8 +98,8 @@ Default hotkeys are editable:
 | Ctrl+Alt+F10 | Next delivery |
 | Ctrl+Alt+F11 | Start/stop listening |
 | Ctrl+Alt+F12 | Speak pasted text |
-| Ctrl+Alt+S | Stop output / cancel auto-send |
-| Ctrl+Alt+L | Switch quick language pair |
+| Ctrl+Shift+F11 | Stop output / cancel auto-send |
+| Ctrl+Shift+F12 | Switch quick language pair |
 
 By default shortcuts work while this app is focused. Enable **global Windows
 hotkeys** in the dialog to use them while VRChat is focused. Only the configured

@@ -170,6 +170,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.recognition_epoch = 0
         self.listener_session = None
         self.recover_listener = False
+        self.capture_retry_after = 0
         self.device_scan_busy = False
         self.pending_draft = False
         self.editor_dirty = False
@@ -743,6 +744,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if self.is_listener_running:
             self.stop_listener()
             self.recover_listener = True
+        self.capture_retry_after = 0
         self.config["APP"]["input_device"] = current_text
         self.save_config()
 
@@ -1056,7 +1058,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if self.is_listener_running and (new_index is None or new_index != old_index):
             self.stop_listener()
             self.recover_listener = True
-        if self.recover_listener and new_index is not None:
+        if self.recover_listener and new_index is not None and time.monotonic() >= self.capture_retry_after:
             if self.listener_session is None or not self.listener_session.thread.is_alive():
                 self.start_listener()
         self._update_activate_button()
@@ -1072,6 +1074,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         record_failure("Microphone capture", type(error), error.__traceback__)
         self.is_listener_running = False
         self.recover_listener = True
+        self.capture_retry_after = time.monotonic() + 5
         self.recognition_epoch += 1
         self._update_activate_button()
         self.log_warning("Microphone disconnected or failed. Waiting for device recovery.")
@@ -1142,6 +1145,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         except Exception:
             record_failure("Start microphone", *sys.exc_info()[::2])
             self.recover_listener = True
+            self.capture_retry_after = time.monotonic() + 5
             self.log_error("Could not open microphone. Waiting for device recovery; see diagnostic logs.")
 
     def stop_listener(self):

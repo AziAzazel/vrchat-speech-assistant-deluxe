@@ -433,3 +433,21 @@ def test_language_shortcut_remembers_existing_piper_model(gui, window):
     assert window.config["SPEECH"]["piper_model"] == "polish.onnx"
     window.switch_language()
     assert window.config["SPEECH"]["piper_model"] == "english.onnx"
+
+
+def test_capture_failures_back_off_before_reopening_device(gui, window, monkeypatch):
+    import threading
+    app, main = gui
+    session = Mock(stopped=threading.Event())
+    session.thread.is_alive.return_value = False
+    window.listener_session = session
+    monkeypatch.setattr(window, "refresh_devices", Mock())
+    start = Mock()
+    monkeypatch.setattr(window, "start_listener", start)
+    window._capture_failed(OSError("device failed but is still listed"), session)
+    available = [{"name": "Test device", "index": 0}]
+    window._apply_devices(available, available)
+    start.assert_not_called()
+    window.capture_retry_after = 0
+    window._apply_devices(available, available)
+    start.assert_called_once()
