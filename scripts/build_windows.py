@@ -1,11 +1,16 @@
 """Build a one-file Windows x64 executable from a clean Windows environment."""
 from pathlib import Path
 import sys
+import os
+from importlib.metadata import version
 
 
 def main():
     if sys.platform != "win32":
         raise SystemExit("Build the Windows executable on Windows; cross-compilation is unsupported.")
+    reference = os.getenv("GITHUB_REF", "")
+    if reference.startswith("refs/tags/"):
+        assert reference.removeprefix("refs/tags/") == "v" + version("vrchat_speech_assistant"), "Tag/version mismatch"
     import PyInstaller.__main__
     from third_party_notices import write_notices
     root = Path(__file__).resolve().parents[1]

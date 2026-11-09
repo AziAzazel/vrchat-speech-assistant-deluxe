@@ -48,4 +48,3 @@ def gui(tmp_path_factory):
     app = QApplication.instance() or QApplication([])
     main = importlib.import_module("vrchat_speech_assistant.main")
     return app, main
-
