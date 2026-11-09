@@ -78,11 +78,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f release-assets/VRChatSpeechAssistantDeluxe.exe
+          test -f release-assets/dist/VRChatSpeechAssistantDeluxe.exe
           gh release create "$RELEASE_TAG" \
-            release-assets/VRChatSpeechAssistantDeluxe.exe \
-            release-assets/SHA256SUMS.txt \
-            release-assets/THIRD_PARTY_NOTICES.txt \
+            release-assets/dist/VRChatSpeechAssistantDeluxe.exe \
+            release-assets/dist/SHA256SUMS.txt \
+            release-assets/dist/THIRD_PARTY_NOTICES.txt \
             release-assets/smoke-test.json \
             release-assets/build-dependencies.txt \
             --verify-tag --prerelease \

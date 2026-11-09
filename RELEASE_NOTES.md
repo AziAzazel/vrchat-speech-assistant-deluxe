@@ -1,4 +1,4 @@
-VRChat Speech Assistant Deluxe 1.15.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.15.0 release candidate 2
 
 Download **VRChatSpeechAssistantDeluxe.exe** below. It is a standalone Windows
 x64 application; Windows speech and Polly need no separate Python installation.
