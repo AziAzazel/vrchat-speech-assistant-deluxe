@@ -1,10 +1,10 @@
 """Providers classes that can be used as speech_provider attribute for the VRCSpeechAssistant class."""
 
 import contextlib
-import re
-import threading
-from os import getenv
-from pathlib import Path
+import hashlib
+import json
+import time
+from xml.sax.saxutils import escape
 
 import boto3
 import botocore
@@ -12,11 +12,11 @@ import botocore.exceptions
 import pygame
 import pygame.mixer
 from botocore.config import Config
-from logger import Logger
+from vrchat_speech_assistant.diagnostics import DATA_DIR
 
-VOICES_PATH = Path(getenv("APPDATA")) / "VRChat Speech Assistant" / "voices"
+VOICES_PATH = DATA_DIR / "voices"
 
-logger = Logger("VRChat Speech Assistant :: Providers")
+
 
 
 class Polly:
@@ -62,23 +62,20 @@ class Polly:
             # https://docs.aws.amazon.com/polly/latest/dg/supportedtags.html
             ssml_tags = (
                 '<amazon:auto-breaths frequency="low" volume="soft" duration="x-short">'
-                + input_text
+                + escape(input_text)
                 + "</amazon:auto-breaths>"
             )
             if extra_tags:
                 if extra_tags.get("whispered", False) is True:
                     ssml_tags = f'<amazon:effect name="whispered">{ssml_tags}</amazon:effect>'
+                if extra_tags.get("rate"):
+                    ssml_tags = '<prosody rate="{}%">{}</prosody>'.format(extra_tags["rate"], ssml_tags)
                 if extra_tags.get("pitch"):
-                    ssml_tags = f'<prosody pitch="{extra_tags["pitch"]}%">{ssml_tags}</prosody>'
+                    ssml_tags = '<prosody pitch="{}%">{}</prosody>'.format(extra_tags["pitch"], ssml_tags)
             return f"<speak>{ssml_tags}</speak>"
 
-        # Remove special characters from the text for the file destination
-        filename = re.sub("[#<$+%>!`&*'|{?\"=/}:@]", "", text)
-        if extra_tags:
-            if extra_tags.get("whispered", False) is True:
-                filename += "w_"
-            if extra_tags.get("pitch"):
-                filename += f"p{extra_tags['pitch']}_"
+        # Hash content/settings to avoid long filenames, collisions and transcript leaks.
+        filename = hashlib.sha256(json.dumps([text, extra_tags], sort_keys=True).encode()).hexdigest()
         filepath = VOICES_PATH / voice_id / f"{filename}.ogg"
         filepath.parent.mkdir(parents=True, exist_ok=True)
         # Create the answer from Amazon Polly if the file does not exist
@@ -90,11 +87,12 @@ class Polly:
                     OutputFormat="ogg_vorbis",
                     TextType="ssml",
                 )
-                with filepath.open("wb") as file:
-                    file.write(response["AudioStream"].read())
-            except botocore.exceptions.ClientError as err:
-                logger.error(err)
-                return
+                temporary = filepath.with_suffix(".tmp")
+                with contextlib.closing(response["AudioStream"]) as stream:
+                    temporary.write_bytes(stream.read())
+                temporary.replace(filepath)
+            except botocore.exceptions.ClientError:
+                raise
         read_ogg_file(str(filepath), output_device_name)
 
     def test(self) -> bool:
@@ -122,15 +120,12 @@ def read_ogg_file(filepath: str, output_device_name: str):
         The name of the output device to use for audio playback.
     """
 
-    def stream_thread():
-        pygame.mixer.music.load(filepath)
-        pygame.mixer.music.play()
-        # Wait until the audio finishes playing
-        while pygame.mixer.music.get_busy():
-            continue
-        pygame.mixer.quit()
-
     pygame.mixer.pre_init(devicename=output_device_name)
     pygame.mixer.init()
-    thread = threading.Thread(target=stream_thread)
-    thread.start()
+    try:
+        pygame.mixer.music.load(filepath)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.02)
+    finally:
+        pygame.mixer.quit()

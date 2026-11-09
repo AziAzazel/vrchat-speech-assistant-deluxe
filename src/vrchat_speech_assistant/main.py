@@ -3,6 +3,9 @@
 And / or speech to text with the VRChat chatbox using OSC protocol. """
 
 import configparser
+import json
+import logging
+import threading
 import contextlib
 import sys
 import webbrowser
@@ -13,24 +16,37 @@ from threading import Thread
 
 import speech_recognition
 from chatbox_osc import FONTS, write_chatbox
-from logger import Logger
-from pyaudio_devices.devices import get_devices
+from pyaudio_devices import get_devices
 from PySide6 import QtGui, QtWidgets
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 
-from vrchat_speech_assistant import _config, darkstyle, icons
+from vrchat_speech_assistant import darkstyle, icons
 from vrchat_speech_assistant.languages import DEEPL, GOOGLE, VOICES
 from vrchat_speech_assistant.providers import Polly
+from vrchat_speech_assistant.windows_speech import (
+    WindowsSpeech, UnavailableWindowsSpeech, SpeechWithFallback,
+)
 from vrchat_speech_assistant.utils import test_deepl
 from vrchat_speech_assistant.widgets import ConfigDialog
+try:
+    from vrchat_speech_assistant import _config
+except ImportError:
+    from vrchat_speech_assistant import provider_defaults as _config
 
-CONFIG_FILE = Path(getenv("APPDATA")) / "VRChat Speech Assistant" / "config.ini"
+
+from vrchat_speech_assistant.diagnostics import DATA_DIR, record_failure
+from vrchat_speech_assistant.text_tools import correct_nicknames, decorate_chatbox
+from vrchat_speech_assistant.piper_speech import PiperSpeech
+from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS, announcement, spoken_delivery
+from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
+
+CONFIG_FILE = DATA_DIR / "config.ini"
 RESOURCES_PATH = Path(__file__).parent / "resources"
 
-logger = Logger("VRChat Speech Assistant :: Main")
+logger = logging.getLogger("deluxe.main")
 dispatcher = Dispatcher()
 
 
@@ -80,10 +96,16 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         The configuration file parser.
     """
 
-    DEFAULT_WIDTH = 320
-    DEFAULT_HEIGHT = 650
-    SPEECH_GROUPBOX_HEIGHT = 271
-    CHATBOX_GROUPBOX_HEIGHT = 100
+    status_signal = Signal(str, str)
+    activity_signal = Signal(bool)
+    recognized_signal = Signal(str)
+    finished_signal = Signal()
+    command_signal = Signal(object)
+
+    DEFAULT_WIDTH = 420
+    DEFAULT_HEIGHT = 850
+    SPEECH_GROUPBOX_HEIGHT = 390
+    CHATBOX_GROUPBOX_HEIGHT = 140
     CONFIG = {
         "APP": {
             "beep": True,
@@ -104,38 +126,91 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "show more settings": False,
             "source_language": "English",
             "target_language": "English",
-            "provider": "Amazon Polly",
+            "provider": "Windows Speech",
+            "polly_fallback": False,
+            "fallback_voice": "Justin",
+            "piper_model": "",
+            "piper_executable": "",
             "voice": "Justin",
             "output_device": None,
+        },
+        "ROLEPLAY": {
+            "personality": "Neutral", "delivery": "Normal",
+            "chatbox_tag": False, "global_hotkeys": False,
+            **{"key_" + action: key for action, key in DEFAULT_HOTKEYS.items()},
         },
         "CHATBOX": {
             "enabled": True,
             "show more settings": False,
             "font": "Normal",
             "animation": True,
+            "keyword_additions": False,
         },
     }
 
     def __init__(self):
         super().__init__()
+        self.status_signal.connect(self._show_status)
+        self.activity_signal.connect(self._voice_activity)
+        self.recognized_signal.connect(self._submit_recognized)
+        self.finished_signal.connect(self._finish_output)
+        self.command_signal.connect(lambda command: command())
+        self.output_busy = False
+        self.windows_speech = None
+        self._closing = False
+        self.translator = None
         self.speech_provider = None
         self.extra_tags = {}
         self.osc_client = SimpleUDPClient("127.0.0.1", 9000)
         self.osc_server = BlockingOSCUDPServer(("127.0.0.1", 7001), dispatcher)
         self.listener = None
         self.is_listener_running = False
-        self.input_devices = get_devices(device_type="input")
-        self.output_devices = get_devices(device_type="output")
-        self.config = configparser.ConfigParser(allow_no_value=True)
+        self.input_devices = self._detect_devices("input")
+        self.output_devices = self._detect_devices("output")
+        self.config = configparser.ConfigParser(allow_no_value=True, interpolation=None)
         self._init_config()
         self._init_ui()
         self._init_translator()
         self._init_server()
+        self.global_hotkeys = None
+        self.shortcuts = []
+        self._init_hotkeys()
+
+    @staticmethod
+    def _detect_devices(kind):
+        try:
+            return get_devices(device_type=kind)
+        except (OSError, AttributeError):
+            # A headless runner or disconnected audio API can expose no devices.
+            record_failure("Enumerate " + kind + " devices", *sys.exc_info()[::2])
+            return []
 
     def _init_config(self):
         self._load_base_config()
         if CONFIG_FILE.exists():
             self.config.read(CONFIG_FILE, encoding="utf8")
+        self.chatbox_rules = {}
+        try:
+            path = DATA_DIR / "chatbox-rules.json"
+            if path.exists():
+                rules = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(rules, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in rules.items()):
+                    raise ValueError("Invalid keyword additions")
+                self.chatbox_rules = rules
+        except (ValueError, OSError):
+            record_failure("Load chatbox additions", *sys.exc_info()[::2])
+        self.corrections = {}
+        correction_file = DATA_DIR / "nicknames.json"
+        if correction_file.exists():
+            try:
+                self.corrections = json.loads(correction_file.read_text(encoding="utf-8"))
+                if not isinstance(self.corrections, dict) or not all(
+                    isinstance(k, str) and isinstance(v, str) for k, v in self.corrections.items()
+                ):
+                    raise ValueError("Invalid nickname dictionary")
+            except (ValueError, OSError):
+                self.corrections = {}
+                record_failure("Load nickname dictionary", *sys.exc_info()[::2])
         self.save_config()
 
     def _load_base_config(self):
@@ -150,20 +225,35 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.setWindowFlag(Qt.Window)
         self.setWindowTitle("VRChat Speech Assistant")
         self.setWindowIcon(QtGui.QIcon(str(RESOURCES_PATH / "logo.png")))
-        self.setFixedSize(self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
+        self.resize(480, 800)
+        self.setMinimumSize(440, 540)
         ######### Menubar #########
         menu_bar = QtWidgets.QMenuBar(self)
         file_menu = menu_bar.addMenu("File")
         file_open_config_folder = file_menu.addAction("Open config folder", self.open_config_folder)
         file_open_config_folder.setIcon(QtGui.QIcon(str(RESOURCES_PATH / "folder.png")))
+        file_menu.addAction("Open diagnostic logs", self.open_logs)
         edit_menu = menu_bar.addMenu("Edit")
+        edit_menu.addAction("Nickname corrections", self.edit_nicknames)
+        edit_menu.addAction("Chatbox keyword additions", self.edit_chatbox_rules)
         edit_configuration_action = edit_menu.addAction("Configuration", self.edit_config)
         edit_configuration_action.setIcon(QtGui.QIcon(str(RESOURCES_PATH / "edit.png")))
+        roleplay_menu = menu_bar.addMenu("Roleplay")
+        roleplay_menu.addAction("Personality, delivery and hotkeys", self.edit_roleplay)
+        for action in ACTIONS[:4]:
+            roleplay_menu.addAction(action.title(), lambda checked=False, name=action: self.roleplay_action(name))
         more_menu = menu_bar.addMenu("More")
-        open_web_action = more_menu.addAction("Open Gitlab Repository", self.open_repository)
+        open_web_action = more_menu.addAction("Open Deluxe Repository", self.open_repository)
         open_web_action.setIcon(QtGui.QIcon(str(RESOURCES_PATH / "web.png")))
         ######### Main layout #########
-        main_layout = QtWidgets.QVBoxLayout(self)
+        container = QtWidgets.QWidget()
+        main_layout = QtWidgets.QVBoxLayout(container)
+        scroll = QtWidgets.QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(container)
+        outer_layout = QtWidgets.QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addWidget(scroll)
         ######### Banner #########
         banner = QtWidgets.QLabel(self)
         banner.setPixmap(QtGui.QPixmap(str(RESOURCES_PATH / "banner.png")))
@@ -191,7 +281,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.target_language_combo.setCurrentText(self.config["SPEECH"].get("target_language"))
         self.target_language_combo.currentTextChanged.connect(self._on_target_language_combo_clicked)
         ######### Formality widget #########
-        formality_label = QtWidgets.QLabel("Formality (if available):")
+        formality_label = QtWidgets.QLabel("DeepL translation formality:")
         self.formality_combo = QtWidgets.QComboBox()
         self.formality_combo.addItems(["Default", "Formal", "Informal"])
         self.formality_combo.setCurrentText(self.config["TRANSLATOR"].get("formality"))
@@ -219,9 +309,20 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         ######### Speech provider widget #########
         speech_provider_label = QtWidgets.QLabel("Speech provider:")
         self.speech_provider_combo = QtWidgets.QComboBox()
-        self.speech_provider_combo.addItems(["Amazon Polly"])
+        self.speech_provider_combo.addItems(["Windows Speech", "Piper (offline)", "Amazon Polly"])
         self.speech_provider_combo.setCurrentText(self.config["SPEECH"].get("provider"))
         self.speech_provider_combo.currentTextChanged.connect(self._on_speech_provider_combo_clicked)
+        self.piper_model_button = QtWidgets.QPushButton("Choose Piper voice model (.onnx)")
+        self.piper_model_button.clicked.connect(self.choose_piper_model)
+        self.piper_backend_button = QtWidgets.QPushButton("Choose external Piper backend (piper.exe)")
+        self.piper_backend_button.clicked.connect(self.choose_piper_backend)
+        self.polly_fallback_checkbox = QtWidgets.QCheckBox("Use Polly if local synthesis fails (online; AWS charges)")
+        self.polly_fallback_checkbox.setChecked(self.config["SPEECH"].getboolean("polly_fallback"))
+        self.polly_fallback_checkbox.toggled.connect(self._on_fallback_changed)
+        self.fallback_voice_combo = QtWidgets.QComboBox()
+        self.fallback_voice_combo.currentTextChanged.connect(self._on_fallback_voice_changed)
+        self.local_voice_note = QtWidgets.QLabel("Local voices use their natural style; whisper/pitch effects require Polly.")
+        self.local_voice_note.setWordWrap(True)
         ######### Extra tags widgets #########
         extra_tags_label = QtWidgets.QLabel("Extra tags:")
         self.extra_tags_combo = QtWidgets.QComboBox()
@@ -248,6 +349,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         ######### Add widgets to speech groupbox widget #########
         speech_groupbox_layout.addWidget(speech_provider_label)
         speech_groupbox_layout.addWidget(self.speech_provider_combo)
+        speech_groupbox_layout.addWidget(self.piper_model_button)
+        speech_groupbox_layout.addWidget(self.piper_backend_button)
+        speech_groupbox_layout.addWidget(self.polly_fallback_checkbox)
+        speech_groupbox_layout.addWidget(self.fallback_voice_combo)
+        speech_groupbox_layout.addWidget(self.local_voice_note)
         speech_groupbox_layout.addWidget(extra_tags_label)
         speech_groupbox_layout.addWidget(self.extra_tags_combo)
         speech_groupbox_layout.addWidget(speech_voice_label)
@@ -287,6 +393,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         chatbox_groupbox_layout.addWidget(font_label)
         chatbox_groupbox_layout.addWidget(self.font_combo)
         chatbox_groupbox_layout.addWidget(self.chatbox_animation)
+        self.keyword_additions_checkbox = QtWidgets.QCheckBox("Enable keyword text / emoji additions")
+        self.keyword_additions_checkbox.setChecked(self.config["CHATBOX"].getboolean("keyword_additions"))
+        self.keyword_additions_checkbox.toggled.connect(self._on_keyword_additions_changed)
+        chatbox_groupbox_layout.addWidget(self.keyword_additions_checkbox)
         ######### Beep option widget #########
         self.beep_status_checkbox = QtWidgets.QCheckBox("Beep while recognizing")
         self.beep_status_checkbox.setChecked(self.config["APP"].getboolean("beep"))
@@ -330,8 +440,19 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         main_layout.addWidget(self.chatbox_groupbox)
         main_layout.addWidget(self.beep_status_checkbox)
         main_layout.addWidget(self.toggle_activate_button)
+        main_layout.addWidget(QtWidgets.QLabel("Type or paste text to speak:"))
+        self.manual_text = QtWidgets.QPlainTextEdit()
+        self.manual_text.setPlaceholderText("Paste a ChatGPT answer or type a message…")
+        self.manual_text.setMaximumHeight(90)
+        main_layout.addWidget(self.manual_text)
+        self.manual_chatbox = QtWidgets.QCheckBox("Also send pasted text to VRChat Chatbox")
+        main_layout.addWidget(self.manual_chatbox)
+        self.speak_button = QtWidgets.QPushButton("Speak pasted text")
+        self.speak_button.clicked.connect(self.speak_manual_text)
+        main_layout.addWidget(self.speak_button)
         main_layout.addWidget(chatbox_delete_button)
         main_layout.addWidget(self.log_line_edit)
+        main_layout.addWidget(self.progressbar)
         ######### Append voices for the current provider #########
         self._append_voices_for_selected_provider()
         self.speech_voice_combo.setCurrentText(self.config["SPEECH"].get("voice"))
@@ -347,29 +468,108 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if not self.translator:
             self._disable_target_language_combo()
 
+    def _map_command(self, address, callback):
+        dispatcher.map(address, lambda *args: self.command_signal.emit(lambda: callback(*args)))
+
     def _init_server(self):
         def thread_server():
             with contextlib.suppress(OSError):
                 self.osc_server.serve_forever()
 
-        dispatcher.map("/port", self._server_update_client_port)
-        dispatcher.map("/source_language", self._server_change_source_language)
-        dispatcher.map("/target_language", self._server_change_target_language)
-        dispatcher.map("/formality", self._server_change_formality)
-        dispatcher.map("/speech", self._server_toggle_speech)
-        dispatcher.map("/speech_provider", self._server_change_speech_provider)
-        dispatcher.map("/tag", self._server_change_extra_tags)
-        dispatcher.map("/voice", self._server_change_voice)
-        dispatcher.map("/pitch", self._server_change_voice_pitch)
-        dispatcher.map("/input", self._server_change_input_device)
-        dispatcher.map("/output", self._server_change_output_device)
-        dispatcher.map("/chatbox", self._server_toggle_chatbox)
-        dispatcher.map("/animation", self._server_toggle_chatbox_animation)
-        dispatcher.map("/font", self._server_change_font)
-        dispatcher.map("/beep", self._server_toggle_recognizer_beep)
-        dispatcher.map("/enabled", self._server_toggle_thread)
-        thread = Thread(target=thread_server)
+        self._map_command("/port", self._server_update_client_port)
+        self._map_command("/source_language", self._server_change_source_language)
+        self._map_command("/target_language", self._server_change_target_language)
+        self._map_command("/formality", self._server_change_formality)
+        self._map_command("/roleplay", lambda _, action: self.roleplay_action(action))
+        self._map_command("/speech", self._server_toggle_speech)
+        self._map_command("/speech_provider", self._server_change_speech_provider)
+        self._map_command("/tag", self._server_change_extra_tags)
+        self._map_command("/voice", self._server_change_voice)
+        self._map_command("/pitch", self._server_change_voice_pitch)
+        self._map_command("/input", self._server_change_input_device)
+        self._map_command("/output", self._server_change_output_device)
+        self._map_command("/chatbox", self._server_toggle_chatbox)
+        self._map_command("/animation", self._server_toggle_chatbox_animation)
+        self._map_command("/font", self._server_change_font)
+        self._map_command("/beep", self._server_toggle_recognizer_beep)
+        self._map_command("/enabled", self._server_toggle_thread)
+        thread = Thread(target=thread_server, daemon=True)
         thread.start()
+
+    def edit_roleplay(self):
+        from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
+        RoleplayDialog(self).exec()
+
+    def _init_hotkeys(self):
+        if self.global_hotkeys:
+            self.global_hotkeys.stop()
+            self.global_hotkeys = None
+        for shortcut in self.shortcuts:
+            shortcut.setEnabled(False)
+            shortcut.deleteLater()
+        self.shortcuts = []
+        settings = self.config["ROLEPLAY"]
+        bindings = {}
+        seen = set()
+        for action in ACTIONS:
+            key = settings.get("key_" + action, DEFAULT_HOTKEYS[action])
+            if key:
+                try:
+                    canonical = parse_hotkey(key)
+                    if canonical in seen:
+                        raise ValueError("Duplicate hotkey")
+                    seen.add(canonical)
+                    bindings[action] = key
+                except ValueError:
+                    self.log_warning("Invalid hotkey for " + action + "; edit Roleplay settings.")
+        if settings.getboolean("global_hotkeys") and sys.platform == "win32":
+            self.global_hotkeys = GlobalHotkeys(
+                bindings, lambda action: self.command_signal.emit(lambda: self.roleplay_action(action)),
+                lambda message: self.status_signal.emit("warning", message))
+            self.global_hotkeys.start()
+        else:
+            for action, key in bindings.items():
+                shortcut = QtGui.QShortcut(QtGui.QKeySequence(key), self)
+                shortcut.setContext(Qt.ApplicationShortcut)
+                shortcut.setAutoRepeat(False)
+                shortcut.activated.connect(lambda name=action: self.roleplay_action(name))
+                self.shortcuts.append(shortcut)
+
+    def roleplay_action(self, action):
+        if self._closing:
+            return
+        settings = self.config["ROLEPLAY"]
+        if action == "cycle_personality":
+            names = list(PERSONALITIES)
+            current = settings.get("personality", "Neutral")
+            name = names[(names.index(current) + 1) % len(names)] if current in names else names[0]
+            settings["personality"] = name
+            settings["delivery"] = PERSONALITIES[name][0]
+            self.save_config()
+            self.log_info("Personality: " + name)
+        elif action == "cycle_delivery":
+            modes = list(DELIVERIES)
+            if self.config["SPEECH"].get("provider") != "Amazon Polly":
+                modes.remove("Confidential whisper")
+            current = settings.get("delivery")
+            mode = modes[(modes.index(current) + 1) % len(modes)] if current in modes else "Normal"
+            settings["delivery"] = mode
+            self.save_config()
+            self.log_info("Delivery: " + mode)
+        elif action == "toggle_listener":
+            self.toggle_thread()
+        elif action in ACTIONS[:4] or action == "speak_paste":
+            if self.output_busy:
+                self.log_warning("Speech is busy; announcement was not queued.")
+                return
+            if action == "speak_paste":
+                self.speak_manual_text()
+            else:
+                personality = settings.get("personality", "Neutral")
+                if personality not in PERSONALITIES:
+                    personality = "Neutral"
+                text = settings.get("phrase_" + action, "").strip() or announcement(personality, action)
+                self._start_output(text, self.config["CHATBOX"].getboolean("enabled"), manual=True)
 
     def _on_source_language_combo_clicked(self, current_text: str):
         self.config["SPEECH"]["source_language"] = current_text
@@ -383,6 +583,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.save_config()
         # Append voices for the current provider
         self._append_voices_for_selected_provider()
+        self._check_selected_speech_provider()
 
     def _on_formality_combo_clicked(self, current_text: str):
         self.config["TRANSLATOR"]["formality"] = current_text
@@ -407,13 +608,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if checked == 2:
             self.speech_groupbox.setVisible(True)
             self.config["SPEECH"]["show more settings"] = "True"
-            self.setFixedSize(self.DEFAULT_WIDTH, self.height() + self.SPEECH_GROUPBOX_HEIGHT)
             progressbar_height += self.SPEECH_GROUPBOX_HEIGHT
             self.progressbar.setGeometry(0, progressbar_height, 320, 10)
         else:
             self.speech_groupbox.setVisible(False)
             self.config["SPEECH"]["show more settings"] = "False"
-            self.setFixedSize(self.DEFAULT_WIDTH, self.height() - self.SPEECH_GROUPBOX_HEIGHT)
             progressbar_height -= self.SPEECH_GROUPBOX_HEIGHT
             self.progressbar.setGeometry(0, progressbar_height, 320, 10)
         self.save_config()
@@ -423,13 +622,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if checked == 2:
             self.chatbox_groupbox.setVisible(True)
             self.config["CHATBOX"]["show more settings"] = "True"
-            self.setFixedSize(self.DEFAULT_WIDTH, self.height() + self.CHATBOX_GROUPBOX_HEIGHT)
             progressbar_height += self.CHATBOX_GROUPBOX_HEIGHT
             self.progressbar.setGeometry(0, progressbar_height, 320, 10)
         else:
             self.chatbox_groupbox.setVisible(False)
             self.config["CHATBOX"]["show more settings"] = "False"
-            self.setFixedSize(self.DEFAULT_WIDTH, self.height() - self.CHATBOX_GROUPBOX_HEIGHT)
             progressbar_height -= self.CHATBOX_GROUPBOX_HEIGHT
             self.progressbar.setGeometry(0, progressbar_height, 320, 10)
         self.save_config()
@@ -438,7 +635,39 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.config["SPEECH"]["provider"] = current_text
         self.save_config()
         # Checking which speech provider to use
+        self._append_voices_for_selected_provider()
         self._check_selected_speech_provider()
+
+    def _on_fallback_changed(self, checked):
+        self.config["SPEECH"]["polly_fallback"] = str(checked)
+        self.save_config()
+        self._check_selected_speech_provider()
+
+    def _on_fallback_voice_changed(self, voice):
+        self.config["SPEECH"]["fallback_voice"] = voice
+        self.save_config()
+        self._check_selected_speech_provider()
+
+    def choose_piper_backend(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose Piper executable", "", "Executables (*.exe);;All files (*)")
+        if path:
+            self.config["SPEECH"]["piper_executable"] = path
+            self.save_config()
+            self._check_selected_speech_provider()
+
+    def choose_piper_model(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose Piper voice", "", "Piper models (*.onnx)")
+        if path:
+            if not Path(path + ".json").is_file():
+                self.log_error("The matching .onnx.json file must be beside the voice model.")
+                return
+            self.config["SPEECH"]["piper_model"] = path
+            self._append_voices_for_selected_provider()
+            self._check_selected_speech_provider()
+
+    def _on_keyword_additions_changed(self, enabled):
+        self.config["CHATBOX"]["keyword_additions"] = str(enabled)
+        self.save_config()
 
     def _on_extra_tags_combo_clicked(self, current_text: str):
         self.extra_tags["whispered"] = current_text == "Whispered"
@@ -589,7 +818,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             )
 
     def _disable_target_language_combo(self):
-        self.log_error("DeepL API key is invalid or account usage limit reached.")
+        if self.config["API"].get("deepl_api_key") or _config.DEEPL_API_KEY:
+            self.log_error("DeepL API key is invalid or account usage limit reached.")
+        else:
+            self.log_info("Translation is off. Add a DeepL key to translate between languages.")
         self.target_language_combo.setEnabled(False)
         # Setting the target language to the same as the source language
         self.target_language_combo.setCurrentText(self.source_language_combo.currentText())
@@ -597,23 +829,84 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.save_config()
 
     def _append_voices_for_selected_provider(self):
+        provider_name = self.config["SPEECH"].get("provider")
+        local = provider_name != "Amazon Polly"
+        piper = provider_name == "Piper (offline)"
+        self.piper_model_button.setVisible(piper)
+        self.piper_backend_button.setVisible(piper)
+        self.polly_fallback_checkbox.setVisible(local)
+        self.fallback_voice_combo.setVisible(local)
+        self.local_voice_note.setVisible(local)
+        self.extra_tags_combo.setEnabled(not local)
+        self.speech_pitch_slider.setEnabled(not local)
+        saved_voice = self.config["SPEECH"].get("voice")
+        if local and not piper and self.windows_speech is None:
+            try:
+                self.windows_speech = WindowsSpeech()
+            except Exception:
+                record_failure("Enumerate Windows voices", *sys.exc_info()[::2])
+                self.windows_speech = UnavailableWindowsSpeech()
+        voices = (list(self.windows_speech.voices) or ["No local voice available"]) if local and not piper else (
+            VOICES["polly"].get(self.target_language_combo.currentText()) or ["None"])
+        if piper:
+            model = self.config["SPEECH"].get("piper_model")
+            voices = [Path(model).stem if model else "Choose a Piper model"]
+        self.speech_voice_combo.blockSignals(True)
         self.speech_voice_combo.clear()
-        # Amazon Polly
-        if self.config["SPEECH"].get("provider") == "Amazon Polly":
-            selected_voice = self.target_language_combo.currentText()
-            if not (voices := VOICES["polly"].get(selected_voice)):
-                self.speech_voice_combo.addItem("None")
-            else:
-                self.speech_voice_combo.addItems(voices)
+        self.speech_voice_combo.addItems(voices)
+        if saved_voice in voices:
+            self.speech_voice_combo.setCurrentText(saved_voice)
+        self.config["SPEECH"]["voice"] = self.speech_voice_combo.currentText()
+        self.speech_voice_combo.blockSignals(False)
+        saved_fallback = self.config["SPEECH"].get("fallback_voice")
+        self.fallback_voice_combo.blockSignals(True)
+        self.fallback_voice_combo.clear()
+        self.fallback_voice_combo.addItems(VOICES["polly"].get(self.target_language_combo.currentText()) or ["None"])
+        self.fallback_voice_combo.setToolTip("Polly fallback voice for the selected target language")
+        if self.fallback_voice_combo.findText(saved_fallback) >= 0:
+            self.fallback_voice_combo.setCurrentText(saved_fallback)
+        self.config["SPEECH"]["fallback_voice"] = self.fallback_voice_combo.currentText()
+        self.fallback_voice_combo.blockSignals(False)
+        self.save_config()
 
     def _check_selected_speech_provider(self):
+        if not self.config["SPEECH"].getboolean("enabled"):
+            self.speech_provider = None
+            return
+        if self.config["SPEECH"].get("provider") != "Amazon Polly":
+            primary = (PiperSpeech(self.config["SPEECH"].get("piper_model"), self.config["SPEECH"].get("piper_executable", ""))
+                       if self.config["SPEECH"].get("provider") == "Piper (offline)"
+                       else self.windows_speech or UnavailableWindowsSpeech())
+            self.speech_provider = primary
+            if self.config["SPEECH"].getboolean("polly_fallback"):
+                # Capture settings now; no AWS request is made until a local failure.
+                access = self.config["API"].get("aws_access_key") or _config.AWS_ACCESS_KEY
+                secret = self.config["API"].get("aws_secret_key") or _config.AWS_SECRET_KEY
+                region = self.config["API"].get("aws_region")
+                def fallback():
+                    if not access or not secret:
+                        raise RuntimeError("Configure AWS credentials for Polly fallback")
+                    return Polly(access, secret, region)
+                def notify():
+                    record_failure("Local synthesis; trying Polly fallback", *sys.exc_info()[::2])
+                    self.status_signal.emit("warning", "Local synthesis failed; using online Polly fallback.")
+                self.speech_provider = SpeechWithFallback(
+                    primary, fallback, self.config["SPEECH"].get("fallback_voice"), notify)
+            self.toggle_activate_button.setEnabled(True)
+            return
         # Amazon Polly
         if self.config["SPEECH"].get("provider") == "Amazon Polly":
             aws_access_key = self.config["API"].get("aws_access_key") or _config.AWS_ACCESS_KEY
             aws_secret_key = self.config["API"].get("aws_secret_key") or _config.AWS_SECRET_KEY
             region = self.config["API"].get("aws_region")
-            self.speech_provider = Polly(aws_access_key, aws_secret_key, region)
-            if not self.speech_provider.test():
+            valid = False
+            try:
+                if aws_access_key and aws_secret_key:
+                    self.speech_provider = Polly(aws_access_key, aws_secret_key, region)
+                    valid = self.speech_provider.test()
+            except Exception:
+                record_failure("Validate Polly credentials", *sys.exc_info()[::2])
+            if not valid:
                 self.speech_provider = None
                 self.toggle_activate_button.setEnabled(False)
                 self.log_error("Amazon AWS credentials are invalid or missing.")
@@ -629,7 +922,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         chatbox_enabled = self.config["CHATBOX"].getboolean("enabled")
         self.progressbar.setMaximum(0 if activity else 100)
         if chatbox_enabled:
-            self.osc_client.send_message("/chatbox/typing", bool(activity))
+            try:
+                self.osc_client.send_message("/chatbox/typing", bool(activity))
+            except OSError:
+                record_failure("Chatbox typing status", *sys.exc_info()[::2])
 
     @staticmethod
     def open_config_folder():
@@ -641,7 +937,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     @staticmethod
     def open_repository():
         """Open the repository of the current script in your default web browser."""
-        webbrowser.open("https://gitlab.com/ameliend/vrchat-speech-assistant")
+        webbrowser.open("https://github.com/AziAzazel/vrchat-speech-assistant-deluxe")
 
     def edit_config(self):
         """Open the configuration dialog."""
@@ -665,21 +961,26 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def start_listener(self):
         """Start the listener thread."""
         input_device_name = self.config["APP"].get("input_device")
-        if not (input_device_index := self._get_input_device_index(input_device_name)):
+        input_device_index = self._get_input_device_index(input_device_name)
+        if input_device_index is None:
             return
-        microphone = speech_recognition.Microphone(device_index=input_device_index)
-        recognizer = speech_recognition.Recognizer()
-        recognizer.pause_threshold = 0.5
-        recognizer.non_speaking_duration = 0.5
-        recognizer.dynamic_energy_threshold = False
-        winsound.PlaySound("resources\\on.wav", winsound.SND_ASYNC)
-        self.listener = recognizer.listen_in_background(microphone, self.recognize)
-        self.is_listener_running = True
-        self.log_info("Listening...")
+        try:
+            microphone = speech_recognition.Microphone(device_index=input_device_index)
+            recognizer = speech_recognition.Recognizer()
+            recognizer.pause_threshold = 0.5
+            recognizer.non_speaking_duration = 0.5
+            recognizer.dynamic_energy_threshold = False
+            winsound.PlaySound(str(RESOURCES_PATH / "on.wav"), winsound.SND_ASYNC)
+            self.listener = recognizer.listen_in_background(microphone, self.recognize)
+            self.is_listener_running = True
+            self.log_info("Listening...")
+        except Exception:
+            record_failure("Start microphone", *sys.exc_info()[::2])
+            self.log_error("Could not open microphone. Check the selected device and diagnostic logs.")
 
     def stop_listener(self):
         """Stop the listener thread."""
-        winsound.PlaySound("resources\\off.wav", winsound.SND_ASYNC)
+        winsound.PlaySound(str(RESOURCES_PATH / "off.wav"), winsound.SND_ASYNC)
         self.listener(wait_for_stop=False)  # Stop the listener
         self.is_listener_running = False
         self.log_info("Listener stopped.")
@@ -702,51 +1003,151 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         audio : `speech_recognition.Microphone`
             A `Microphone` instance from `speech_recognition` module as the source of audio input.
         """
-        self._voice_activity(True)
-        source_language = self.config["SPEECH"].get("source_language")
-        target_language = self.config["SPEECH"].get("target_language")
-        if beep := self.config["APP"].getboolean("beep"):
-            winsound.PlaySound("resources\\recognizing.wav", winsound.SND_ASYNC)
+        if self._closing or self.output_busy:
+            return  # Do not feed synthesized output back into the pipeline.
         try:
-            text = recognizer.recognize_google(audio, language=GOOGLE[source_language])
+            source = self.config["SPEECH"].get("source_language")
+            if self.config["APP"].getboolean("beep"):
+                winsound.PlaySound(str(RESOURCES_PATH / "recognizing.wav"), winsound.SND_ASYNC)
+            text = recognizer.recognize_google(audio, language=GOOGLE[source])
+            if not self._closing and text.lower() not in ("stop", "stoppe", "staff"):
+                if self.config["APP"].getboolean("beep"):
+                    winsound.PlaySound(str(RESOURCES_PATH / "recognized.wav"), winsound.SND_ASYNC)
+                self.recognized_signal.emit(text)
         except speech_recognition.UnknownValueError:
-            self.log_warning("The voice recognition did not understand.")
-            if beep:
-                winsound.PlaySound("resources\\warn.wav", winsound.SND_ASYNC)
-            self._voice_activity(False)
+            self.status_signal.emit("warning", "The voice recognition did not understand.")
+        except Exception:
+            record_failure("Recognition", *sys.exc_info()[::2])
+            self.status_signal.emit("error", "Recognition failed. See diagnostic logs.")
+
+    def _submit_recognized(self, text):
+        self._start_output(text, self.config["CHATBOX"].getboolean("enabled"))
+
+    def speak_manual_text(self):
+        self._start_output(self.manual_text.toPlainText(), self.manual_chatbox.isChecked(), manual=True)
+
+    def _start_output(self, text, send_chatbox, manual=False):
+        if self._closing or self.output_busy:
             return
-        except speech_recognition.RequestError:
-            self.log_error("Could not request results from Google Speech Recognition service.")
-            if beep:
-                winsound.PlaySound("resources\\warn.wav", winsound.SND_ASYNC)
-            self._voice_activity(False)
+        if not text.strip():
+            self.log_warning("Enter some text first.")
             return
-        if text.lower() in ("stop", "stoppe", "staff"):
-            self.log_warning(f'Word "{text}" was ignored.')
-            if beep:
-                winsound.PlaySound("resources\\warn.wav", winsound.SND_ASYNC)
-            self._voice_activity(False)
+        if len(text) > 2500:
+            self.log_warning("Please split text into messages of at most 2500 characters.")
             return
-        self.log_info(f"Recognized: {text}")
-        if beep:
-            winsound.PlaySound("resources\\recognized.wav", winsound.SND_ASYNC)
-        # Translating the text if the attribute translator is not None,
-        # and if the source language is different from the target language
-        if self.translator and source_language != target_language:
-            text = self.translate(text)
-        # Speech the text with the attribute function speech_provider.speech,
-        # if there is a provider, and if there is a voice available to speech
-        voice = self.config["SPEECH"].get("voice")
-        output_device_name = self.config["SPEECH"]["output_device"]
-        if self.speech_provider and voice != "None":
-            self.speech_provider.speech(text, voice, output_device_name, self.extra_tags)
-        if self.config["CHATBOX"].getboolean("enabled"):
-            font = self.config["CHATBOX"].get("font")
-            chunk_length = 25 if self.config["CHATBOX"].getboolean("animation") is True else 0
-            write_chatbox(self.osc_client, text.capitalize(), chunk_length=chunk_length, font=font)
-        if beep and self.is_listener_running:
-            winsound.PlaySound("resources\\on.wav", winsound.SND_ASYNC)
+        if manual and (not self.speech_provider
+                       or not self.config["SPEECH"].getboolean("enabled")
+                       or self.config["SPEECH"].get("voice") == "None"):
+            self.log_error("Enable Speech and configure a working speech provider first.")
+            return
+        config = {section: dict(self.config[section]) for section in ("SPEECH", "TRANSLATOR", "CHATBOX")}
+        provider, translator = self.speech_provider, self.translator
+        tags, corrections = dict(self.extra_tags), dict(self.corrections)
+        roleplay = dict(self.config["ROLEPLAY"])
+        delivery = roleplay.get("delivery", "Normal")
+        if delivery == "Confidential whisper" and self.config["SPEECH"].get("provider") != "Amazon Polly":
+            self.log_warning("Confidential whisper requires Polly. Choose Polly or another delivery mode.")
+            return
+        tags.update(DELIVERIES.get(delivery, {}))
+        rules = dict(self.chatbox_rules) if self.config["CHATBOX"].getboolean("keyword_additions") else {}
+        client = self.osc_client
+        self.output_busy = True
+        self.speak_button.setEnabled(False)
+        self._voice_activity(True)
+
+        def output():
+            stage = "Nickname correction"
+            try:
+                result = correct_nicknames(text.strip(), corrections)
+                corrected_source = result
+                speech = config["SPEECH"]
+                if translator and speech["source_language"] != speech["target_language"]:
+                    stage = "Translation"
+                    options = config["TRANSLATOR"]
+                    result = translator.translate_text(
+                        result, source_lang=DEEPL[speech["source_language"]].split("-")[0],
+                        target_lang=DEEPL[speech["target_language"]],
+                        split_sentences=int(options["split_sentences"]),
+                        formality={"Default": "default", "Formal": "prefer_more", "Informal": "prefer_less"}[options["formality"]],
+                    ).text
+                if provider and speech["voice"] != "None":
+                    stage = "Synthesis/audio playback"
+                    provider.speech(spoken_delivery(result, tags), speech["voice"], speech["output_device"], tags)
+                if send_chatbox:
+                    stage = "Chatbox output"
+                    chatbox_text = decorate_chatbox(result, rules, corrected_source)
+                    if roleplay.get("chatbox_tag", "false").lower() == "true":
+                        tag = PERSONALITIES.get(roleplay.get("personality"), PERSONALITIES["Neutral"])[1]
+                        if tag:
+                            chatbox_text = tag + " " + chatbox_text
+                    write_chatbox(client, chatbox_text, font=config["CHATBOX"]["font"],
+                                  chunk_length=25 if config["CHATBOX"]["animation"].lower() == "true" else 0)
+                logger.info("Output completed; manual=%s; chatbox=%s", manual, send_chatbox)
+                self.status_signal.emit("info", "Output completed.")
+            except Exception:
+                record_failure(stage, *sys.exc_info()[::2])
+                self.status_signal.emit("error", stage + " failed. See diagnostic logs.")
+            finally:
+                self.finished_signal.emit()
+
+        Thread(target=output, name="speech-output", daemon=True).start()
+
+    def _finish_output(self):
+        self.output_busy = False
+        self.speak_button.setEnabled(True)
         self._voice_activity(False)
+
+    def edit_nicknames(self):
+        self._edit_text_rules(False)
+
+    def edit_chatbox_rules(self):
+        self._edit_text_rules(True)
+
+    def _edit_text_rules(self, chatbox):
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Chatbox keyword additions" if chatbox else "Nickname corrections")
+        layout = QtWidgets.QVBoxLayout(dialog)
+        layout.addWidget(QtWidgets.QLabel(
+            "Keyword → appended text / emoji / link (chatbox only; images cannot be embedded)"
+            if chatbox else "Recognized name → replacement (before translation and speech)"))
+        table = QtWidgets.QTableWidget(0, 2)
+        table.setHorizontalHeaderLabels(["Keyword", "Append text / emoji / link"] if chatbox else ["Recognized phrase", "Correct name / pronunciation"])
+        layout.addWidget(table)
+        for key, value in (self.chatbox_rules if chatbox else self.corrections).items():
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QtWidgets.QTableWidgetItem(key))
+            table.setItem(row, 1, QtWidgets.QTableWidgetItem(value))
+        add = QtWidgets.QPushButton("Add rule")
+        add.clicked.connect(lambda: table.insertRow(table.rowCount()))
+        layout.addWidget(add)
+        layout.addWidget(QtWidgets.QLabel("Clear a phrase to remove its correction."))
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() == QtWidgets.QDialog.Accepted:
+            corrections = {}
+            for row in range(table.rowCount()):
+                key, value = table.item(row, 0), table.item(row, 1)
+                if key and key.text().strip() and value:
+                    corrections[key.text().strip()] = value.text()
+            try:
+                path = DATA_DIR / ("chatbox-rules.json" if chatbox else "nicknames.json")
+                temporary = path.with_suffix(".tmp")
+                temporary.write_text(json.dumps(corrections, ensure_ascii=False, indent=2), encoding="utf-8")
+                temporary.replace(path)
+                if chatbox:
+                    self.chatbox_rules = corrections
+                else:
+                    self.corrections = corrections
+            except OSError:
+                record_failure("Save text rules", *sys.exc_info()[::2])
+                self.log_error("Could not save text rules. See diagnostic logs.")
+
+    @staticmethod
+    def open_logs():
+        webbrowser.open((DATA_DIR / "logs").as_uri())
 
     def translate(self, text: str) -> str:
         """Use DeepL's API to translate a text.
@@ -777,49 +1178,21 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         return translated_text
 
     def log_info(self, text: str):
-        """Logs informational messages.
-
-        Clears the current log and resets the progress bar color.
-
-        Parameters
-        ----------
-        text : str
-            The message to be logged.
-        """
-        logger.info(text)
-        self.clear_log()
+        self.status_signal.emit("info", text)
 
     def log_warning(self, text: str):
-        """Logs warning messages.
-
-        Set the progress bar color to "orange".
-
-        Parameters
-        ----------
-        text : str
-            The message to be logged.
-        """
-        logger.warn(text)
-        self.clear_log()
-        self.log_line_edit.setStyleSheet("color: orange")
-        self.log_line_edit.setText(text)
-        self.progressbar.setStyleSheet("border-style: none; background-color: orange")
+        self.status_signal.emit("warning", text)
 
     def log_error(self, text: str):
-        """Logs error messages.
+        self.status_signal.emit("error", text)
 
-        Set the progress bar color to "red".
-
-        Parameters
-        ----------
-        text : str
-            The message to be logged.
-        """
-        logger.error(text)
+    def _show_status(self, level, text):
         self.clear_log()
-        self.log_line_edit.setStyleSheet("color: #cd3131")
+        color = {"info": "", "warning": "orange", "error": "#cd3131"}[level]
         self.log_line_edit.setText(text)
-        self.progressbar.setStyleSheet("border-style: none; background-color: #cd3131")
+        self.log_line_edit.setStyleSheet(f"color: {color}" if color else "")
+        if color:
+            self.progressbar.setStyleSheet(f"border-style: none; background-color: {color}")
 
     def clear_log(self):
         """Clears the current log and resets the progress bar color."""
@@ -828,6 +1201,16 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     # pylint: disable=invalid-name, missing-function-docstring
     def closeEvent(self, event):
+        if self.output_busy:
+            self.log_warning("Wait for speech output to finish before closing.")
+            event.ignore()
+            return
+        self._closing = True
+        if self.global_hotkeys:
+            self.global_hotkeys.stop()
+        if self.listener:
+            self.listener(wait_for_stop=False)
+        self.osc_server.shutdown()
         self.osc_server.server_close()
         event.accept()  # Let the window close
 

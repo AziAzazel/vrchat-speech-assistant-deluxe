@@ -2,7 +2,12 @@ import re
 
 from PySide6 import QtWidgets
 
-from vrchat_speech_assistant import _config, providers, utils
+from vrchat_speech_assistant import providers, utils
+try:
+    from vrchat_speech_assistant import _config
+except ImportError:
+    from vrchat_speech_assistant import provider_defaults as _config
+
 
 
 class ConfigDialog(QtWidgets.QDialog):
@@ -77,25 +82,15 @@ class ConfigDialog(QtWidgets.QDialog):
         self.parent.config["API"]["aws_access_key"] = aws_access_key
         self.parent.config["API"]["aws_secret_key"] = aws_secret_key
         self.parent.save_config()
-        if deepl_key:
-            translator = utils.test_deepl(deepl_key)
-        else:
-            translator = utils.test_deepl(_config.DEEPL_API_KEY)
+        # Translation and AWS are optional when using local Windows speech.
+        translator = utils.test_deepl(deepl_key or _config.DEEPL_API_KEY)
         if translator:
             self._activate_translator(translator)
         else:
             self._disable_translator()
-            return False
-        if aws_access_key or aws_secret_key:
-            polly = providers.Polly(aws_access_key, aws_secret_key, "us-west-2")
-        else:
-            polly = providers.Polly(_config.AWS_ACCESS_KEY, _config.AWS_SECRET_KEY, "us-west-2")
-        if polly.test():
-            self._activate_aws()
-        else:
-            self._disable_aws()
-            return False
-        return True
+        self.parent._check_selected_speech_provider()
+        local = self.parent.config["SPEECH"].get("provider") != "Amazon Polly"
+        return local or not self.parent.config["SPEECH"].getboolean("enabled") or self.parent.speech_provider is not None
 
     def _activate_translator(self, translator):
         self.parent.clear_log()
@@ -104,8 +99,12 @@ class ConfigDialog(QtWidgets.QDialog):
         self.deepl_api_key_line_edit.setStyleSheet("")
 
     def _disable_translator(self):
-        self.deepl_api_key_line_edit.setStyleSheet("background-color: #cd3131")
-        self.parent.log_error("DeepL API key is invalid or account usage limit reached.")
+        if self.deepl_api_key_line_edit.text() or _config.DEEPL_API_KEY:
+            self.deepl_api_key_line_edit.setStyleSheet("background-color: #cd3131")
+            self.parent.log_error("DeepL API key is invalid or account usage limit reached.")
+        else:
+            self.deepl_api_key_line_edit.setStyleSheet("")
+            self.parent.log_info("Translation is off; Windows speech needs no cloud credentials.")
         self.parent.translator = None
         self.parent.target_language_combo.setEnabled(False)
         self.parent.target_language_combo.setCurrentText(self.parent.source_language_combo.currentText())

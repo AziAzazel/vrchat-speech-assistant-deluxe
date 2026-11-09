@@ -1,3 +1,216 @@
+# VRChat Speech Assistant Deluxe
+
+[Download the Windows executable](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases)
+
+The standalone Windows x64 download includes Windows speech, Polly, translation,
+manual text speech and the roleplay controls. No Python installation is needed
+for those features. Piper remains an optional external backend: install Piper
+separately and select its `piper.exe` and voice assets in Speech settings.
+
+
+This fork preserves the original Google recognition, DeepL translation, Amazon
+Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
+corrections and diagnostic logging. Music playback and singing synthesis are
+not implemented in this release.
+
+## Personality, announcements and expressive delivery
+
+Open **Roleplay → Personality, delivery and hotkeys**. This is separate from
+**DeepL translation formality**, which still controls translation only.
+
+Personality presets are Neutral, Helpful assistant, Damaged prototype, Corporate
+AI and Rogue intelligence. They supply themed greeting/system/clarification/
+goodbye announcements, an optional chatbox tag and a default delivery. They do
+not generate AI answers or rewrite ordinary conversations. Your microphone or
+pasted words remain yours. Custom announcement fields override preset phrases;
+clear a field to use the preset again. Default phrases are English; customize
+them if your selected source language is different. All announcement output
+uses the existing translation, voice and selected-device pipeline.
+
+Delivery modes apply to all subsequent speech:
+
+| Mode | Effect |
+| --- | --- |
+| Normal | Normal pacing; existing Polly pitch/whisper settings still apply |
+| Measured | Slower pacing |
+| Warning | Faster pacing |
+| Malfunction | Slower pacing and a short repeated first word |
+| Confidential whisper | Genuine Polly whispered effect; requires Polly as primary provider |
+
+Windows SAPI rate changes are approximate; Piper changes phoneme length and
+Polly uses SSML rate. Malfunction is a deliberate spoken stutter, not a voice
+conversion or electronic distortion filter. It does not duplicate text in the
+chatbox. Whisper on a local provider reports a clear message rather than silently
+switching to a paid online service. Cycling delivery skips whisper on local
+providers. Changing personality selects its default delivery; you can then
+choose another delivery yourself. Normal retains any manually selected legacy
+Polly effect; set **Extra tags → None** to clear that effect.
+
+Default hotkeys are editable:
+
+| Shortcut | Action |
+| --- | --- |
+| Ctrl+Alt+F5 | Greeting |
+| Ctrl+Alt+F6 | System announcement |
+| Ctrl+Alt+F7 | Request clarification |
+| Ctrl+Alt+F8 | Goodbye |
+| Ctrl+Alt+F9 | Next personality |
+| Ctrl+Alt+F10 | Next delivery |
+| Ctrl+Alt+F11 | Start/stop listening |
+| Ctrl+Alt+F12 | Speak pasted text |
+
+By default shortcuts work while this app is focused. Enable **global Windows
+hotkeys** in the dialog to use them while VRChat is focused. Only the configured
+combinations are registered; no keyboard hook or keystroke recording is used.
+Unavailable/reserved key combinations report a conflict so you can change them.
+Bindings support Ctrl/Alt/Shift/Win plus letters, digits or F1–F24 (or an unmodified
+function key). Duplicate bindings and multi-stroke sequences are rejected. Clear
+a binding to disable it. Global keys are unregistered on reconfiguration and exit.
+
+Announcement actions are also available in the Roleplay menu and through OSC
+`/roleplay` with the action names `greeting`, `system`, `uncertain`, `goodbye`,
+`cycle_personality`, `cycle_delivery`, `toggle_listener`, or `speak_paste`.
+Announcements received during output are dropped with a busy message, not queued.
+Personality phrases are roleplay dialogue; they do not change privacy or other
+application settings. Personality/delivery changes apply to the next utterance.
+
+The tests simulate Windows registration and SAPI. Global shortcuts in VRChat,
+real pacing, and Polly whispered delivery still need a Windows listening test.
+
+## More offline voices: Piper
+
+Install the optional backend into the same Python environment as the app:
+
+```powershell
+python -m pip install -e ".[offline]"
+```
+
+Download a Piper voice's `.onnx` **and** matching `.onnx.json` files from
+[the Piper voice collection](https://huggingface.co/rhasspy/piper-voices/tree/main),
+keeping both files together. Select **Speech provider → Piper (offline)**, then
+**Choose Piper voice model (.onnx)**. The model's language must match the text
+being synthesized. Different model files provide different voices. This first
+integration uses the default speaker for multi-speaker models.
+
+Piper synthesizes locally on CPU and uses the selected audio output device.
+It makes no model downloads or cloud requests itself. Model selection and
+backend installation are required before first use. Optional Polly fallback
+works just as for Windows Speech. Piper here uses natural model delivery;
+it does not implement Polly's pitch or whispered styles. Genuine whispered
+speech needs a voice/model trained for that delivery, rather than simply
+lowering playback volume. Polly's existing whispered style remains available.
+Kokoro is another potential offline provider, but is not integrated here.
+
+Validation: the Piper command-line interface was exercised and its process,
+Unicode input, timeout and audio-output handling have automated tests. Full
+synthesis with real Piper voice assets and Windows audio routing remains to
+be tested with your downloaded model.
+
+## Keyword additions to OSC chatbox text
+
+1. Open **Edit → Chatbox keyword additions**.
+2. Add a keyword and the text/emoji/link to append, for example `hello → 👋`
+   or `system → [AI ONLINE]`, then Save.
+3. Enable **Show Chatbox settings → Enable keyword text / emoji additions**.
+
+Rules apply to both recognized and pasted messages when their chatbox output
+is enabled. They do not affect synthesized speech. Matching ignores case and
+uses whole words/phrases, including literal punctuation. Rules inspect the
+nickname-corrected source and translated output. Each matching addition is
+appended once in table order; additions do not trigger more rules. The original
+sentence is retained. Clear a keyword and Save to remove its rule. Rules persist
+in `chatbox-rules.json` beside the application settings; the enable toggle also
+persists and starts off by default.
+
+Standard VRChat OSC chatbox input is text: it cannot embed a picture or upload
+an image. An image URL or Unicode symbol can be added as text, but it will not
+render as an inline image. Font support and VRChat's message limits still apply;
+keep additions short. Existing animation and font settings still apply.
+
+## Local Windows speech and optional Polly fallback
+
+Open **Show Speech settings → Speech provider → Windows Speech**, then select
+an installed voice and your output device (for example Cable Input). This works
+for both microphone recognition and pasted text. New configurations default to
+Windows Speech; existing configurations keep their saved provider until changed.
+No AWS key or network connection is needed for local synthesis. Recognition
+still uses Google, and translation still uses DeepL when configured.
+
+The provider uses Windows desktop SAPI voices through `pywin32`, installed
+by the project's normal dependency installation on Windows. It renders a temporary
+WAV and plays it through the same selected-device mixer as Polly, rather than
+sending speech to your default Windows speakers. Temporary WAVs are removed
+after playback. Choose a voice that speaks your target language. The voice list
+contains SAPI desktop voices; some Narrator/OneCore/natural voices are not
+exposed through SAPI and will not appear. Restart the app after installing voices.
+
+**Use Polly if local synthesis fails** is opt-in and can incur AWS usage charges.
+Choose its separate fallback voice for the target language and enter your AWS
+credentials in Configuration. No Polly client or synthesis request is created
+unless local synthesis fails. Audio-device/playback failures do not trigger a
+second, potentially duplicated online utterance. An unavailable local engine
+can also fall back if this option is enabled. Failures and fallback use appear
+in diagnostic logs. With fallback off, failures report an error locally.
+
+Windows voices use their natural pitch and do not support Polly's whispered
+style here. Pitch/whisper controls are disabled for Windows Speech; select Polly
+to use them. Previously selected effects can still apply to Polly fallback.
+
+## New controls
+
+- Paste a ChatGPT answer or type into **Type or paste text to speak**, then click
+  **Speak pasted text**. Listening does not need to be enabled. Enable Speech and
+  select a Windows voice, or configure AWS credentials for Polly. The selected
+  voice and output device apply; pitch and whispered effects require Polly. When source and target languages differ, the existing
+  DeepL translator applies too. Paste at most 2500 characters per message.
+- **Also send pasted text to VRChat Chatbox** independently controls manual text
+  delivery to OSC. It starts unchecked. Recognition keeps the existing Chatbox
+  setting. Chatbox output preserves capitalization.
+- **Edit → Nickname corrections** edits a persistent phrase/replacement table.
+  Add rows, or clear a phrase to remove it, then Save. Matching ignores case,
+  uses whole phrases and prefers longer matches. Replacements happen once,
+  before translation and synthesis, for microphone and pasted text alike.
+  Use the desired spelling or a phonetic pronunciation. Translation may still
+  change a name; use matching source/target languages to avoid translation.
+- **File → Open diagnostic logs** opens the logs directory under
+  `%APPDATA%/VRChat Speech Assistant`. `application.log` records stages, exception
+  types and stack locations, with three rotating backups. `native-crash.log`
+  attempts to capture fatal native failures; not every OS/driver crash can be
+  captured. Logs omit transcript text, credentials, and provider exception
+  messages. Settings and nickname files remain separate from logs. Review logs
+  before sharing them because stack paths can identify your Windows user.
+
+Audio output runs in a background worker. Only one message plays at a time;
+recognition callbacks received during playback are ignored to reduce feedback.
+The app asks you to wait for current output before closing. Qt widget updates
+from recognition and OSC are delivered on the GUI thread. These changes address
+known thread/mixer hazards but do not establish the cause of every prior crash.
+
+## Development and validation
+
+The live application still requires Windows, audio devices, configured provider
+credentials and optionally VRChat/virtual audio cable. An unpublished private
+`_config.py` is no longer required; enter your own credentials in Configuration.
+Existing private defaults remain compatible. No shared keys are supplied.
+
+Use Python 3.12 and install with `python -m pip install -e ".[tests]"`, then run
+`python -m vrchat_speech_assistant.main` from the repository root.
+On Linux PyAudio needs PortAudio development headers; installing dependencies
+does not make the Windows-only application runnable there.
+
+Run `PYTHONPATH=src python -m pytest -q` on Linux. The headless GUI tests use
+actual Qt widgets but simulate Windows sounds, audio devices and cloud services;
+they do not prove real recognition, AWS/DeepL access, playback or VRChat delivery.
+They use a temporary settings directory. Windows requires equivalent PYTHONPATH
+setup (`$env:PYTHONPATH="src"` in PowerShell).
+
+Before release on Windows, verify microphone recognition and pasted text through
+your virtual cable, test nickname corrections and translation, toggle manual
+chatbox output, disconnect an audio device, and confirm diagnostic logs record
+a failure without containing message text or credentials.
+
+---
+
 [![pipeline status](https://gitlab.com/ameliend/vrchat-speech-assistant/badges/main/pipeline.svg)](https://gitlab.com/ameliend/vrchat-speech-assistant/-/commits/main)
 [![pylint](https://gitlab.com/ameliend/vrchat-speech-assistant/-/jobs/artifacts/main/raw/public/badges/pylint.svg?job=pylint)](https://gitlab.com/ameliend/vrchat-speech-assistant/-/commits/main)
 [![vscode-editor](https://badgen.net/badge/icon/visualstudio?icon=visualstudio&label)](https://code.visualstudio.com/)
@@ -107,3 +320,28 @@ that provide other great features!
 ## 🧨 Feature request of find a bug?
 
 You can contact me by mail `a.deshams+git@slmail.me`, or better, create a ticket in this repository!
+
+## Building and publishing the Windows executable
+
+GitHub Actions builds on Windows Server 2022 with Python 3.12. Manual workflow runs
+produce a downloadable build artifact; pushing a `v*` tag publishes
+a GitHub prerelease **only after tests and executable smoke checks pass**.
+The smoke test opens the packaged GUI and synthesizes a real SAPI WAV without
+requiring a microphone, network credentials or a physical playback device.
+It does not validate microphone recognition or VRChat output on user hardware.
+
+To build locally on Windows:
+
+```powershell
+python -m pip install -c requirements-release.txt -e ".[tests]" PyInstaller numpy
+python -m pytest -q
+python scripts/build_windows.py
+```
+
+The executable is `dist/VRChatSpeechAssistantDeluxe.exe`. The build intentionally
+excludes private `_config.py` files and Piper's optional runtime/models. It is
+unsigned because no signing certificate is configured. Download SHA256 checksums,
+third-party notices and smoke-test results alongside the executable in Releases.
+The existing MIT attribution is preserved. Dependency source/project links and
+licenses are listed in the notices; the build scripts and dependency constraints
+are available here to rebuild the executable.
