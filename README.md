@@ -4,6 +4,8 @@
   <img src="./Logo%20VR%20Chat%20Speech%20Assistant%20Deluxe.png" alt="VRChat Speech Assistant Deluxe — official project logo" width="420">
 </p>
 
+VRChat Speech Assistant Deluxe is based on [VRChat Speech Assistant](https://gitlab.com/ameliend/vrchat-speech-assistant), originally developed by **Amelien Deshams (Nekosan)**.
+
 [Download the Windows executable](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases)
 
 This is vibe-coded but works better than the original in my opinion. If there are any bugs let me know!
