@@ -20,6 +20,19 @@ def smoke_test(report):
     from vrchat_speech_assistant.windows_speech import WindowsSpeech
     from vrchat_speech_assistant import darkstyle
     from vrchat_speech_assistant.piper_speech import PiperSpeech
+    from vrchat_speech_assistant.languages import GOOGLE, DEEPL, VOICES
+    from vrchat_speech_assistant.providers import polly_engine, validate_polly_style, UnsupportedSpeechStyle
+    assert len(GOOGLE) == 86 and len(DEEPL) == 111
+    assert "Ola [Neural]" in VOICES["polly"]["Polish"]
+    assert polly_engine("Matthew") == "standard"
+    assert polly_engine("Ola [Neural]") == "neural"
+    validate_polly_style("Ola [Neural]", {"rate": 85})
+    try:
+        validate_polly_style("Ola [Neural]", {"whispered": True})
+    except UnsupportedSpeechStyle:
+        pass
+    else:
+        raise AssertionError("Neural whisper was not rejected")
     for filename in ("banner.png", "logo.png", "on.wav", "off.wav"):
         assert (RESOURCES_PATH / filename).is_file(), filename
     speech = WindowsSpeech()
@@ -91,7 +104,7 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed"}), encoding="utf-8")
 
 
 def main():

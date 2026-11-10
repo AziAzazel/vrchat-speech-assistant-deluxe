@@ -28,8 +28,10 @@ from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 
 from vrchat_speech_assistant import darkstyle, icons
-from vrchat_speech_assistant.languages import DEEPL, GOOGLE, VOICES
-from vrchat_speech_assistant.providers import Polly
+from vrchat_speech_assistant.languages import DEEPL, GOOGLE, VOICES, DEEPL_BETA_LANGUAGES
+from vrchat_speech_assistant.translation import translate_message
+from vrchat_speech_assistant.timings import stage_timer
+from vrchat_speech_assistant.providers import Polly, polly_engine, validate_polly_style, UnsupportedSpeechStyle
 from vrchat_speech_assistant.windows_speech import (
     WindowsSpeech, UnavailableWindowsSpeech, SpeechWithFallback,
 )
@@ -341,12 +343,18 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         source_language_label = QtWidgets.QLabel("Source language:")
         self.source_language_combo = QtWidgets.QComboBox()
         self.source_language_combo.addItems(GOOGLE.keys())
+        for index in range(self.source_language_combo.count()):
+            if self.source_language_combo.itemText(index) in DEEPL_BETA_LANGUAGES:
+                self.source_language_combo.setItemData(index, "Extra language from upstream; DeepL beta support is needed when translating it.", Qt.ToolTipRole)
         self.source_language_combo.setCurrentText(self.config["SPEECH"].get("source_language"))
         self.source_language_combo.currentTextChanged.connect(self._on_source_language_combo_clicked)
         ######### Target language widget #########
         target_language_label = QtWidgets.QLabel("Target language:")
         self.target_language_combo = QtWidgets.QComboBox()
         self.target_language_combo.addItems(DEEPL.keys())
+        for index in range(self.target_language_combo.count()):
+            if self.target_language_combo.itemText(index) in DEEPL_BETA_LANGUAGES:
+                self.target_language_combo.setItemData(index, "DeepL beta/extra language; API availability depends on DeepL. Select a matching local voice/model or supported Polly voice.", Qt.ToolTipRole)
         self.target_language_combo.setCurrentText(self.config["SPEECH"].get("target_language"))
         self.target_language_combo.currentTextChanged.connect(self._on_target_language_combo_clicked)
         ######### Formality widget #########
@@ -384,6 +392,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.fallback_voice_combo.currentTextChanged.connect(self._on_fallback_voice_changed)
         self.local_voice_note = QtWidgets.QLabel("Local voices use their natural style; whisper/pitch effects require Polly.")
         self.local_voice_note.setWordWrap(True)
+        self.polly_capability_label = QtWidgets.QLabel()
+        self.polly_capability_label.setWordWrap(True)
         ######### Extra tags widgets #########
         extra_tags_label = QtWidgets.QLabel("Extra tags:")
         self.extra_tags_combo = QtWidgets.QComboBox()
@@ -418,6 +428,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         speech_groupbox_layout.addWidget(self.polly_fallback_checkbox)
         speech_groupbox_layout.addWidget(self.fallback_voice_combo)
         speech_groupbox_layout.addWidget(self.local_voice_note)
+        speech_groupbox_layout.addWidget(self.polly_capability_label)
         speech_groupbox_layout.addWidget(extra_tags_label)
         speech_groupbox_layout.addWidget(self.extra_tags_combo)
         speech_groupbox_layout.addWidget(speech_voice_label)
@@ -819,11 +830,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def _on_fallback_changed(self, checked):
         self.config["SPEECH"]["polly_fallback"] = str(checked)
+        self._update_polly_capabilities()
         self.save_config()
         self._check_selected_speech_provider()
 
     def _on_fallback_voice_changed(self, voice):
         self.config["SPEECH"]["fallback_voice"] = voice
+        self._update_polly_capabilities()
         if voice:
             self.config["SPEECH"]["fallback_voice_" + self.config["SPEECH"].get("target_language")] = voice
         self.save_config()
@@ -922,6 +935,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.config["SPEECH"]["voice"] = current_text
         self.config["SPEECH"][self._voice_key(provider, language)] = current_text
         self.config["SPEECH"]["voice_" + language] = current_text
+        self._update_polly_capabilities()
         self.save_config()
 
     def _on_chatbox_delete_button_clicked(self):
@@ -1033,6 +1047,16 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.config["SPEECH"]["target_language"] = self.source_language_combo.currentText()
         self.save_config()
 
+    def _update_polly_capabilities(self):
+        direct = self.config["SPEECH"].get("provider") == "Amazon Polly"
+        visible = direct or self.config["SPEECH"].getboolean("polly_fallback")
+        self.polly_capability_label.setVisible(visible)
+        voice = self.speech_voice_combo.currentText() if direct else self.fallback_voice_combo.currentText()
+        engine = polly_engine(voice)
+        prefix = "Polly" if direct else "Polly fallback"
+        note = "Neural: rate supported; whisper and pitch require a Standard voice." if engine == "neural" else "Standard: whisper and pitch available."
+        self.polly_capability_label.setText(prefix + " — " + note)
+
     def _append_voices_for_selected_provider(self):
         provider_name = self.config["SPEECH"].get("provider")
         local = provider_name != "Amazon Polly"
@@ -1078,6 +1102,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.fallback_voice_combo.setCurrentText(saved_fallback)
         self.config["SPEECH"]["fallback_voice"] = self.fallback_voice_combo.currentText()
         self.fallback_voice_combo.blockSignals(False)
+        self._update_polly_capabilities()
         self.save_config()
 
     def _check_selected_speech_provider(self):
@@ -1327,7 +1352,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             source = self.config["SPEECH"].get("source_language")
             if self.config["APP"].getboolean("beep"):
                 winsound.PlaySound(str(RESOURCES_PATH / "recognizing.wav"), winsound.SND_ASYNC)
-            text = recognizer.recognize_google(audio, language=GOOGLE[source])
+            with stage_timer("recognition"):
+                text = recognizer.recognize_google(audio, language=GOOGLE[source])
             if not self._closing and text.lower() not in ("stop", "stoppe", "staff"):
                 if self.config["APP"].getboolean("beep"):
                     winsound.PlaySound(str(RESOURCES_PATH / "recognized.wav"), winsound.SND_ASYNC)
@@ -1453,6 +1479,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.log_warning("Confidential whisper requires Polly. Choose Polly or another delivery mode.")
             return
         tags.update(DELIVERIES.get(delivery, {}))
+        if self.config["SPEECH"].get("provider") == "Amazon Polly":
+            try:
+                validate_polly_style(config["SPEECH"]["voice"], tags)
+            except UnsupportedSpeechStyle as error:
+                self.log_warning(str(error))
+                return
         rules = dict(self.chatbox_rules) if self.config["CHATBOX"].getboolean("keyword_additions") else {}
         client = CancellableOSC(self.osc_client)
         event = threading.Event()
@@ -1476,19 +1508,16 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 if not already_translated and translator and speech["source_language"] != speech["target_language"]:
                     stage = "Translation"
                     options = config["TRANSLATOR"]
-                    result = translator.translate_text(
-                        result, source_lang=DEEPL[speech["source_language"]].split("-")[0],
-                        target_lang=DEEPL[speech["target_language"]],
-                        split_sentences=int(options["split_sentences"]),
-                        formality={"Default": "default", "Formal": "prefer_more", "Informal": "prefer_less"}[options["formality"]],
-                    ).text
+                    with stage_timer("translation"):
+                        result = translate_message(translator, result, speech["source_language"], speech["target_language"], options)
                 check_cancelled()
                 result = add_random_ending(result, ending_text, ending_frequency)
                 spoken = spoken_delivery(correct_nicknames(result, pronunciations), tags)
                 entry["result"], entry["spoken"] = result, spoken
                 if provider and speech["voice"] != "None":
                     stage = "Synthesis/audio playback"
-                    provider.speech(spoken, speech["voice"], speech["output_device"], tags)
+                    with stage_timer("synthesis_and_playback"):
+                        provider.speech(spoken, speech["voice"], speech["output_device"], tags)
                 check_cancelled()
                 if send_chatbox:
                     stage = "Chatbox output"
@@ -1497,11 +1526,14 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                         tag = PERSONALITIES.get(roleplay.get("personality"), PERSONALITIES["Neutral"])[1]
                         if tag:
                             chatbox_text = tag + " " + chatbox_text
-                    write_chatbox(client, chatbox_text, font=config["CHATBOX"]["font"],
-                                  chunk_length=25 if config["CHATBOX"]["animation"].lower() == "true" else 0)
+                    with stage_timer("OSC_delivery"):
+                        write_chatbox(client, chatbox_text, font=config["CHATBOX"]["font"],
+                                      chunk_length=25 if config["CHATBOX"]["animation"].lower() == "true" else 0)
                 entry["status"] = "completed"
                 logger.info("Output completed; manual=%s; chatbox=%s", manual, send_chatbox)
                 self.status_signal.emit("info", "Output completed.")
+            except UnsupportedSpeechStyle as error:
+                self.status_signal.emit("warning", str(error))
             except OutputCancelled:
                 entry["status"] = "cancelled"
                 self.status_signal.emit("info", "Speech stopped; unsent chatbox output cancelled.")
@@ -1589,32 +1621,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         webbrowser.open((DATA_DIR / "logs").as_uri())
 
     def translate(self, text: str) -> str:
-        """Use DeepL's API to translate a text.
-
-        Parameters
-        ----------
-        text : str
-            The text to be translated.
-
-        Returns
-        -------
-        str
-            The translated text.
-        """
-        source_language = DEEPL[self.config["SPEECH"].get("source_language")].split("-")[0]
-        target_language = DEEPL[self.config["SPEECH"].get("target_language")]
-        split_sentences = self.config["TRANSLATOR"].getint("split_sentences")
-        formality = self.config["TRANSLATOR"].get("formality")
-        formality_mapping = {"Default": "default", "Formal": "prefer_more", "Informal": "prefer_less"}
-        translated_text = self.translator.translate_text(
-            text,
-            split_sentences=split_sentences,
-            formality=formality_mapping[formality],
-            source_lang=source_language,
-            target_lang=target_language,
-        ).text
-        self.log_info(f"Translated: {translated_text}")
-        return translated_text
+        """Translate with the same beta-language policy as the output worker."""
+        with stage_timer("translation"):
+            return translate_message(self.translator, text, self.config["SPEECH"]["source_language"],
+                                     self.config["SPEECH"]["target_language"], self.config["TRANSLATOR"])
 
     def log_info(self, text: str):
         self.status_signal.emit("info", text)

@@ -8,7 +8,7 @@ dependencies = [
     "boto3>=1.28.73,<2",
     "botocore>=1.31.73,<2",
     "chatbox_osc @ git+https://gitlab.com/ameliend/chatbox_osc.git@8bc70a237c8262a22a23dc5900659a9245f7a640",
-    "deepl>=1.15.0,<2",
+    "deepl>=1.22.0,<2",
     "logger @ git+https://gitlab.com/ameliend/logger.git@f8b86e939833d11e0dd4286f0e67ecfc6584a29f",
     "pyaudio-devices @ git+https://gitlab.com/ameliend/pyaudio-devices.git@f22f4b371e4b54e091a0967db13246d222811c90",
     "pygame>=2.5.2,<3",

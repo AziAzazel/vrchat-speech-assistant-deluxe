@@ -1,28 +1,25 @@
-VRChat Speech Assistant Deluxe 1.17.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.18.0 release candidate 1
 
-Download VRChatSpeechAssistantDeluxe.exe (Windows x64). Replace the old executable;
-existing settings remain in %APPDATA%/VRChat Speech Assistant.
+Download VRChatSpeechAssistantDeluxe.exe (Windows x64). Existing settings remain
+in %APPDATA%/VRChat Speech Assistant.
 
-New features:
-- Pronunciation dictionary under Edit: displayed word → spoken respelling,
-  applied after translation to synthesis only. Chatbox spelling is unchanged.
-  Saved separately from nickname corrections in pronunciation.json.
-- Session history from File or the message section: last 50 attempts with source,
-  result, pronunciation and completion/cancellation/failure status. Memory only;
-  nothing is saved to disk or diagnostic logs. Clearable, empty after restart.
-- Load a history source for editing, or repeat its result with the current voice
-  without retranslation or another random ending. Unsent drafts are protected.
-- Collapse whole UI sections by their headers. States are remembered; recognition
-  preview opens the message section when needed. Voice, Chatbox and Random ending
-  start collapsed.
-- Random ending text such as ", poi" or ", desu", with a 0–100% frequency slider:
-  0% never, 100% always. Applies once after translation to speech and chatbox,
-  before final punctuation, with settings saved. Off by default.
+Selected changes adapted from the original Amelien Deshams (Nekosan) project:
+- Expanded catalogues: 86 recognition languages, 111 DeepL languages and 100
+  distinct Polly voice IDs. Additional DeepL languages request the beta flag
+  and quality-optimized model; actual availability depends on DeepL.
+- Correct engine selection for newly added Neural voices, including Polish Ola.
+  Neural uses supported SSML; incompatible whisper/pitch settings produce an
+  actionable message before synthesis. Standard voices retain their effects,
+  labels, saved selections and cache behavior.
+- Duration diagnostics for recognition, translation, synthesis/playback and OSC,
+  without adding transcripts or credentials to logs.
+- UPSTREAM_REVIEW.md documents the exact baseline, selected commits and deferred
+  experiments. No old upstream history or shared credentials were merged.
 
-All prior functionality remains: global hotkeys, per-language/provider voices,
-saved pitch/window size, responsive columns, delayed editable preview, stop
-speech, audio recovery, local Windows speech, optional Polly and external Piper.
+All previous Deluxe controls remain available. Offline Whisper recognition and
+GGWave are separate upstream experiments and are not included in this release.
 
-The executable is unsigned. CI verifies the packaged GUI, native hotkey dispatch,
-SAPI WAV generation, pronunciation formatting, history UI, category collapse and
-ending controls. Live audio/VRChat routing still needs user hardware testing.
+Validation includes regression tests and a packaged Windows smoke test covering
+native hotkeys, SAPI generation, GUI, saved settings and the Neural style guard.
+Live AWS/DeepL calls and audio/VRChat routing require user testing. The executable
+is unsigned.

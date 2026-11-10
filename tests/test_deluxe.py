@@ -661,3 +661,23 @@ def test_pronunciation_editor_saves_persistent_rules(gui, window, monkeypatch, t
     assert 'Neko-san' in (tmp_path / 'pronunciation.json').read_text()
     window._init_config()
     assert window.pronunciations == {"Nekosan": "Neko-san"}
+
+
+def test_neural_voice_keeps_pitch_setting_and_explains_invalid_style(gui, window, monkeypatch):
+    app, main = gui
+    window.config['SPEECH'].update(provider='Amazon Polly', target_language='Polish')
+    window.config['ROLEPLAY']['delivery'] = 'Normal'
+    window.target_language_combo.blockSignals(True)
+    window.target_language_combo.setCurrentText('Polish')
+    window.target_language_combo.blockSignals(False)
+    window._append_voices_for_selected_provider()
+    window.speech_voice_combo.setCurrentText('Ola [Neural]')
+    assert 'Neural' in window.polly_capability_label.text()
+    window.speech_pitch_slider.setValue(-20)
+    window.manual_text.setPlainText('Cześć')
+    window.speak_manual_text()
+    app.processEvents()
+    window.speech_provider.speech.assert_not_called()
+    assert 'Standard voice' in window.log_line_edit.text()
+    assert window.config['SPEECH']['pitch'] == '-20'
+    window.speech_pitch_slider.setValue(0)

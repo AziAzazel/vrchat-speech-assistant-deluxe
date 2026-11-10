@@ -14,10 +14,26 @@ import pygame.mixer
 from botocore.config import Config
 from vrchat_speech_assistant.diagnostics import DATA_DIR
 from vrchat_speech_assistant.output_control import check_cancelled
+from vrchat_speech_assistant.languages import POLLY_VOICES_ENGINE
 
 VOICES_PATH = DATA_DIR / "voices"
 
 
+
+
+class UnsupportedSpeechStyle(ValueError):
+    """Safe, actionable capability message with no submitted text or credentials."""
+
+
+def polly_engine(voice):
+    return POLLY_VOICES_ENGINE.get(voice.split(" ", 1)[0], "standard")
+
+
+def validate_polly_style(voice, tags):
+    if polly_engine(voice) == "neural" and (tags.get("whispered") or tags.get("pitch")):
+        raise UnsupportedSpeechStyle(
+            "This Neural voice does not support whisper or pitch. Set pitch to 0, tags to None "
+            "and delivery to Normal/Measured/Warning, or choose a Standard voice.")
 
 
 class Polly:
@@ -59,13 +75,13 @@ class Polly:
             A dict of extra tags.
         """
 
+        engine = polly_engine(voice_id)
+        validate_polly_style(voice_id, extra_tags or {})
         def convert_to_ssml(input_text):
             # https://docs.aws.amazon.com/polly/latest/dg/supportedtags.html
-            ssml_tags = (
-                '<amazon:auto-breaths frequency="low" volume="soft" duration="x-short">'
-                + escape(input_text)
-                + "</amazon:auto-breaths>"
-            )
+            ssml_tags = escape(input_text)
+            if engine == "standard":
+                ssml_tags = '<amazon:auto-breaths frequency="low" volume="soft" duration="x-short">' + ssml_tags + "</amazon:auto-breaths>"
             if extra_tags:
                 if extra_tags.get("whispered", False) is True:
                     ssml_tags = f'<amazon:effect name="whispered">{ssml_tags}</amazon:effect>'
@@ -76,13 +92,15 @@ class Polly:
             return f"<speak>{ssml_tags}</speak>"
 
         # Hash content/settings to avoid long filenames, collisions and transcript leaks.
-        filename = hashlib.sha256(json.dumps([text, extra_tags], sort_keys=True).encode()).hexdigest()
+        cache_key = [text, extra_tags] if engine == "standard" else [text, extra_tags, engine]
+        filename = hashlib.sha256(json.dumps(cache_key, sort_keys=True).encode()).hexdigest()
         filepath = VOICES_PATH / voice_id / f"{filename}.ogg"
         filepath.parent.mkdir(parents=True, exist_ok=True)
         # Create the answer from Amazon Polly if the file does not exist
         if not filepath.exists():
             try:
                 response = self.client.synthesize_speech(
+                    Engine=engine,
                     Text=convert_to_ssml(text),
                     VoiceId=voice_id.split(" ")[0],
                     OutputFormat="ogg_vorbis",

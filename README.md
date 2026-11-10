@@ -21,6 +21,28 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Selected upstream updates (1.18)
+
+We reviewed the original GitLab project through release 2.3.1 and adapted selected
+changes into Deluxe. [Upstream review and commit references](UPSTREAM_REVIEW.md)
+explain the shared baseline, incorporated fixes and experimental branches.
+
+- Recognition catalogue: 86 languages; DeepL catalogue: 111 languages. Additional
+  DeepL languages use its beta flag and quality-optimized model. Actual API
+  availability depends on the service; these counts describe our catalogue.
+- Polly catalogue: 100 distinct voice IDs, including Polish **Ola [Neural]**.
+  New voices select the required engine. Existing voice labels, saved selections
+  and Standard effects remain compatible.
+- Neural voices support rate, but cannot use whisper or pitch. The UI explains
+  this and rejects incompatible settings before a synthesis request; choose a
+  Standard voice for those effects. The same guard applies to Polly fallback.
+- Diagnostic logs include durations for recognition, translation, synthesis with
+  playback, and OSC delivery, without recording submitted text or credentials.
+
+Offline recognition from the upstream experimental Whisper branch is not yet
+included. Recognition still uses Google; Windows Speech and Piper remain the
+local synthesis options. No live AWS/DeepL requests were made for this update.
+
 ## Pronunciation, history, collapsible sections and random endings (1.17)
 
 **Edit → Pronunciation dictionary (speech only)** maps a displayed name/word to a
