@@ -24,8 +24,12 @@ def parse_hotkey(sequence):
 
 
 class GlobalHotkeys:
-    def __init__(self, bindings, activate, report):
+    def __init__(self, bindings, activate, report, ready=None):
         self.bindings, self.activate, self.report = bindings, activate, report
+        self.ready = ready
+        self.ready_event = threading.Event()
+        self.thread_id = None
+        self.registered_count = 0
         self.stop_event = threading.Event()
         self.thread = threading.Thread(target=self._run, name="global-hotkeys", daemon=True)
 
@@ -41,6 +45,10 @@ class GlobalHotkeys:
             self.report("Global hotkeys require Windows; use app-focused shortcuts here.")
             return
         api = ctypes.windll.user32
+        self.thread_id = threading.get_native_id()
+        message = wintypes.MSG()
+        # Ensure this worker owns a Win32 message queue before registration.
+        api.PeekMessageW(ctypes.byref(message), None, 0, 0, 0)
         registered = []
         try:
             for ident, (action, sequence) in enumerate(self.bindings.items(), 1):
@@ -51,11 +59,17 @@ class GlobalHotkeys:
                     registered.append(ident)
                 else:
                     self.report(f"Hotkey {sequence} is unavailable; change its binding.")
+            self.registered_count = len(registered)
+            self.ready_event.set()
+            if self.ready:
+                self.ready(len(registered), sum(bool(key) for key in self.bindings.values()))
             actions = list(self.bindings)
-            message = wintypes.MSG()
             while not self.stop_event.wait(.03):
                 while api.PeekMessageW(ctypes.byref(message), None, 0x0312, 0x0312, 1):
-                    self.activate(actions[int(message.wParam) - 1])
+                    ident = int(message.wParam)
+                    if ident in registered:
+                        self.activate(actions[ident - 1])
         finally:
+            self.ready_event.set()
             for ident in registered:
                 api.UnregisterHotKey(None, ident)

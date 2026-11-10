@@ -45,6 +45,7 @@ from vrchat_speech_assistant.text_tools import correct_nicknames, decorate_chatb
 from vrchat_speech_assistant.piper_speech import PiperSpeech
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS, announcement, spoken_delivery
 from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
+from vrchat_speech_assistant.responsive_ui import ResponsiveCards
 
 CONFIG_FILE = DATA_DIR / "config.ini"
 RESOURCES_PATH = Path(__file__).parent / "resources"
@@ -101,6 +102,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     status_signal = Signal(str, str)
     activity_signal = Signal(bool)
+    hotkey_state_signal = Signal(str)
     recognized_signal = Signal(str, int)
     devices_signal = Signal(object, object)
     capture_failed_signal = Signal(object, object)
@@ -117,6 +119,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "beep": True,
             "input_device": None,
         },
+        "UI": {"width": 1000, "height": 800, "maximized": False},
         "PREVIEW": {"enabled": True, "delay": 3.0},
         "LANGUAGES": {"first": "English", "second": "Polish"},
         "API": {
@@ -140,11 +143,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "piper_model": "",
             "piper_executable": "",
             "voice": "Justin",
+            "pitch": 0,
             "output_device": None,
         },
         "ROLEPLAY": {
             "personality": "Neutral", "delivery": "Normal",
-            "chatbox_tag": False, "global_hotkeys": False,
+            "chatbox_tag": False, "global_hotkeys": True,
+            "global_scope_migrated": False,
             **{"key_" + action: key for action, key in DEFAULT_HOTKEYS.items()},
         },
         "CHATBOX": {
@@ -180,6 +185,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.preview_timer.timeout.connect(self.speak_manual_text)
         self.countdown_timer = QTimer(self)
         self.countdown_timer.timeout.connect(self._update_countdown)
+        self.ui_ready = False
+        self.voice_scope = None
+        self.geometry_timer = QTimer(self)
+        self.geometry_timer.setSingleShot(True)
+        self.geometry_timer.timeout.connect(self._save_window_size)
         self.output_busy = False
         self.windows_speech = None
         self._closing = False
@@ -203,6 +213,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.device_timer = QTimer(self)
         self.device_timer.timeout.connect(self.refresh_devices)
         self.device_timer.start(5000)
+        self.ui_ready = True
+        if self.config["UI"].getboolean("maximized"):
+            self.setWindowState(self.windowState() | Qt.WindowMaximized)
 
     @staticmethod
     def _detect_devices(kind):
@@ -217,6 +230,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._load_base_config()
         if CONFIG_FILE.exists():
             self.config.read(CONFIG_FILE, encoding="utf8")
+        if not self.config["ROLEPLAY"].getboolean("global_scope_migrated"):
+            self.config["ROLEPLAY"]["global_hotkeys"] = "True"
+            self.config["ROLEPLAY"]["global_scope_migrated"] = "True"
+            for action, previous in (("speak_paste", "Ctrl+Alt+F12"), ("switch_language", "Ctrl+Shift+F12")):
+                if self.config["ROLEPLAY"].get("key_" + action) == previous:
+                    self.config["ROLEPLAY"]["key_" + action] = DEFAULT_HOTKEYS[action]
         self.chatbox_rules = {}
         try:
             path = DATA_DIR / "chatbox-rules.json"
@@ -253,8 +272,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.setWindowFlag(Qt.Window)
         self.setWindowTitle("VRChat Speech Assistant")
         self.setWindowIcon(QtGui.QIcon(str(RESOURCES_PATH / "logo.png")))
-        self.resize(480, 800)
-        self.setMinimumSize(440, 540)
+        self.setMinimumSize(420, 400)
+        screen = QtGui.QGuiApplication.primaryScreen().availableGeometry()
+        width = min(screen.width(), max(420, self.config["UI"].getint("width")))
+        height = min(screen.height(), max(400, self.config["UI"].getint("height")))
+        self.resize(width, height)
         ######### Menubar #########
         menu_bar = QtWidgets.QMenuBar(self)
         file_menu = menu_bar.addMenu("File")
@@ -284,7 +306,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         outer_layout.addWidget(scroll)
         ######### Banner #########
         banner = QtWidgets.QLabel(self)
-        banner.setPixmap(QtGui.QPixmap(str(RESOURCES_PATH / "banner.png")))
+        banner.setPixmap(QtGui.QPixmap(str(RESOURCES_PATH / "banner.png")).scaledToHeight(52, Qt.SmoothTransformation))
         banner.setAlignment(Qt.AlignCenter)
         tips_label = QtWidgets.QLabel("Speak clearly and avoid any source of background noise.")
         ######### Speech input widget #########
@@ -363,7 +385,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         speech_pitch_label = QtWidgets.QLabel("Voice pitch:")
         self.speech_pitch_slider = QtWidgets.QSlider(Qt.Horizontal)
         self.speech_pitch_slider.setRange(-50, 50)
-        self.speech_pitch_slider.setValue(0)
+        saved_pitch = max(-50, min(50, self.config["SPEECH"].getint("pitch")))
+        self.speech_pitch_slider.setValue(saved_pitch)
+        if saved_pitch:
+            self.extra_tags["pitch"] = saved_pitch
         self.speech_pitch_slider.valueChanged.connect(self._on_speech_pitch_value_changed)
         ######### Speech output widget #########
         output_device_label = QtWidgets.QLabel("Output device:")
@@ -431,7 +456,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.beep_status_checkbox.stateChanged.connect(self._on_beep_option_clicked)
         ######### Activate button #########
         self.toggle_activate_button = QtWidgets.QPushButton(self)
-        self.toggle_activate_button.setFixedSize(self.DEFAULT_WIDTH - 22, 50)
+        self.toggle_activate_button.setMinimumHeight(40)
         self._update_activate_button()
         self.toggle_activate_button.clicked.connect(self._update_activate_button)
         self.toggle_activate_button.clicked.connect(self.toggle_thread)
@@ -441,37 +466,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         chatbox_delete_button.clicked.connect(self._on_chatbox_delete_button_clicked)
         ######### Log widget #########
         self.log_line_edit = QtWidgets.QLabel(self)
-        ######### Progressbar geometry #########
-        progressbar_height = self.DEFAULT_HEIGHT - 10
-        if saved_speech_settings_shown:
-            progressbar_height += self.SPEECH_GROUPBOX_HEIGHT
-        if saved_chatbox_settings_shown:
-            progressbar_height += self.CHATBOX_GROUPBOX_HEIGHT
-        self.progressbar.setGeometry(0, progressbar_height, 320, 10)
-        ######### Add widgets to main layout #########
-        main_layout.setMenuBar(menu_bar)
+        outer_layout.setMenuBar(menu_bar)
         main_layout.addWidget(banner)
         main_layout.addWidget(tips_label)
-        main_layout.addWidget(input_device_label)
-        main_layout.addWidget(self.input_device_combo)
-        main_layout.addWidget(source_language_label)
-        main_layout.addWidget(self.source_language_combo)
-        main_layout.addWidget(target_language_label)
-        main_layout.addWidget(self.target_language_combo)
-        main_layout.addWidget(formality_label)
-        main_layout.addWidget(self.formality_combo)
-        main_layout.addWidget(self.speech_status_checkbox)
-        main_layout.addWidget(speech_more_options_checkbox)
-        main_layout.addWidget(self.speech_groupbox)
-        main_layout.addWidget(self.chatbox_status_checkbox)
-        main_layout.addWidget(chatbox_more_options_checkbox)
-        main_layout.addWidget(self.chatbox_groupbox)
-        main_layout.addWidget(self.beep_status_checkbox)
-        main_layout.addWidget(self.toggle_activate_button)
-        main_layout.addWidget(QtWidgets.QLabel("Type or paste text to speak:"))
         self.manual_text = QtWidgets.QPlainTextEdit()
         self.manual_text.setPlaceholderText("Paste a ChatGPT answer or type a message…")
-        self.manual_text.setMaximumHeight(90)
+        self.manual_text.setMinimumHeight(100)
+        self.manual_text.setMaximumHeight(180)
         main_layout.addWidget(self.manual_text)
         self.manual_text.textChanged.connect(self._editor_changed)
         self.preview_checkbox = QtWidgets.QCheckBox("Preview recognition before sending")
@@ -486,7 +487,6 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.preview_delay.setValue(self.config["PREVIEW"].getfloat("delay"))
         self.preview_delay.valueChanged.connect(self._preview_settings_changed)
         delay_row.addWidget(self.preview_delay)
-        main_layout.addLayout(delay_row)
         self.draft_status = QtWidgets.QLabel("Recognition and manual input share this editor.")
         self.draft_status.setWordWrap(True)
         main_layout.addWidget(self.draft_status)
@@ -507,6 +507,49 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         main_layout.addWidget(chatbox_delete_button)
         main_layout.addWidget(self.log_line_edit)
         main_layout.addWidget(self.progressbar)
+        self.global_shortcuts_checkbox = QtWidgets.QCheckBox("Global hotkeys (also outside this app)")
+        self.global_shortcuts_checkbox.setChecked(self.config["ROLEPLAY"].getboolean("global_hotkeys"))
+        self.global_shortcuts_checkbox.toggled.connect(self._set_global_hotkeys)
+        self.hotkey_state_label = QtWidgets.QLabel()
+        self.hotkey_state_label.setWordWrap(True)
+        self.hotkey_state_signal.connect(self.hotkey_state_label.setText)
+        def card(title, widgets):
+            group = QtWidgets.QGroupBox(title)
+            layout = QtWidgets.QVBoxLayout(group)
+            layout.setContentsMargins(10, 30, 10, 12)
+            for widget in widgets:
+                layout.addWidget(widget)
+            return group
+        # Reparenting widgets removes them from their previous layout.
+        input_card = card("Input, languages and controls", [
+            input_device_label, self.input_device_combo, source_language_label, self.source_language_combo,
+            target_language_label, self.target_language_combo, formality_label, self.formality_combo,
+            self.beep_status_checkbox, self.global_shortcuts_checkbox, self.hotkey_state_label,
+            self.toggle_activate_button, refresh_button])
+        message_card = card("Message preview and speech", [self.manual_text, self.preview_checkbox])
+        message_card.layout().addLayout(delay_row)
+        for widget in (self.draft_status, self.edit_message_button, self.manual_chatbox,
+                       self.speak_button, self.stop_speech_button):
+            message_card.layout().addWidget(widget)
+        voice_card = card("Voice settings", [self.speech_status_checkbox, speech_more_options_checkbox, self.speech_groupbox])
+        chatbox_card = card("VRChat Chatbox", [self.chatbox_status_checkbox, chatbox_more_options_checkbox,
+                                             self.chatbox_groupbox, chatbox_delete_button])
+        self.responsive_cards = ResponsiveCards([input_card, message_card, voice_card, chatbox_card])
+        main_layout.addWidget(self.responsive_cards)
+        main_layout.addWidget(self.log_line_edit)
+        main_layout.addWidget(self.progressbar)
+        self.progressbar.setMaximumHeight(8)
+        self.polly_fallback_checkbox.setText("Polly fallback (online; AWS charges)")
+        self.manual_chatbox.setText("Send manual text to Chatbox")
+        self.stop_speech_button.setText("Stop / cancel auto-send")
+        self.edit_message_button.setText("Edit / pause auto-send")
+        self.piper_backend_button.setText("Choose external Piper backend…")
+        for label in self.findChildren(QtWidgets.QLabel):
+            label.setWordWrap(True)
+        for combo in self.findChildren(QtWidgets.QComboBox):
+            combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(12)
+            combo.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         ######### Append voices for the current provider #########
         self._append_voices_for_selected_provider()
         self.speech_voice_combo.setCurrentText(self.config["SPEECH"].get("voice"))
@@ -554,6 +597,15 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
         RoleplayDialog(self).exec()
 
+    def _set_global_hotkeys(self, enabled):
+        self.config["ROLEPLAY"]["global_hotkeys"] = str(enabled)
+        self.save_config()
+        self._init_hotkeys()
+
+    def _hotkey_report(self, message):
+        logger.warning(message)
+        self.status_signal.emit("warning", message)
+
     def _init_hotkeys(self):
         if self.global_hotkeys:
             self.global_hotkeys.stop()
@@ -563,6 +615,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             shortcut.deleteLater()
         self.shortcuts = []
         settings = self.config["ROLEPLAY"]
+        self.global_shortcuts_checkbox.blockSignals(True)
+        self.global_shortcuts_checkbox.setChecked(settings.getboolean("global_hotkeys"))
+        self.global_shortcuts_checkbox.blockSignals(False)
         bindings = {}
         seen = set()
         for action in ACTIONS:
@@ -579,9 +634,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if settings.getboolean("global_hotkeys") and sys.platform == "win32":
             self.global_hotkeys = GlobalHotkeys(
                 bindings, lambda action: self.command_signal.emit(lambda: self.roleplay_action(action)),
-                lambda message: self.status_signal.emit("warning", message))
+                self._hotkey_report,
+                ready=lambda count, total: self.hotkey_state_signal.emit(f"Global shortcuts registered: {count}/{total}"))
             self.global_hotkeys.start()
         else:
+            self.hotkey_state_signal.emit("App-focused shortcuts only" if not settings.getboolean("global_hotkeys")
+                                          else "Global shortcuts require Windows; app-focused shortcuts active here")
             for action, key in bindings.items():
                 shortcut = QtGui.QShortcut(QtGui.QKeySequence(key), self)
                 shortcut.setContext(Qt.ApplicationShortcut)
@@ -662,32 +720,14 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.config["SPEECH"]["enabled"] = "False"
         self.save_config()
 
-    def _on_speech_show_more_options_clicked(self, checked: int):
-        progressbar_height = self.height() - 10
-        if checked == 2:
-            self.speech_groupbox.setVisible(True)
-            self.config["SPEECH"]["show more settings"] = "True"
-            progressbar_height += self.SPEECH_GROUPBOX_HEIGHT
-            self.progressbar.setGeometry(0, progressbar_height, 320, 10)
-        else:
-            self.speech_groupbox.setVisible(False)
-            self.config["SPEECH"]["show more settings"] = "False"
-            progressbar_height -= self.SPEECH_GROUPBOX_HEIGHT
-            self.progressbar.setGeometry(0, progressbar_height, 320, 10)
+    def _on_speech_show_more_options_clicked(self, checked):
+        self.speech_groupbox.setVisible(checked == 2)
+        self.config["SPEECH"]["show more settings"] = str(checked == 2)
         self.save_config()
 
-    def _on_chatbox_show_more_options_clicked(self, checked: int):
-        progressbar_height = self.height() - 10
-        if checked == 2:
-            self.chatbox_groupbox.setVisible(True)
-            self.config["CHATBOX"]["show more settings"] = "True"
-            progressbar_height += self.CHATBOX_GROUPBOX_HEIGHT
-            self.progressbar.setGeometry(0, progressbar_height, 320, 10)
-        else:
-            self.chatbox_groupbox.setVisible(False)
-            self.config["CHATBOX"]["show more settings"] = "False"
-            progressbar_height -= self.CHATBOX_GROUPBOX_HEIGHT
-            self.progressbar.setGeometry(0, progressbar_height, 320, 10)
+    def _on_chatbox_show_more_options_clicked(self, checked):
+        self.chatbox_groupbox.setVisible(checked == 2)
+        self.config["CHATBOX"]["show more settings"] = str(checked == 2)
         self.save_config()
 
     def _on_speech_provider_combo_clicked(self, current_text: str):
@@ -704,6 +744,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def _on_fallback_voice_changed(self, voice):
         self.config["SPEECH"]["fallback_voice"] = voice
+        if voice:
+            self.config["SPEECH"]["fallback_voice_" + self.config["SPEECH"].get("target_language")] = voice
         self.save_config()
         self._check_selected_speech_provider()
 
@@ -734,6 +776,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def _on_speech_pitch_value_changed(self, current_value: int):
         self.log_line_edit.setText(f"Voice pitch: {str(current_value)}%")
+        self.config["SPEECH"]["pitch"] = str(current_value)
+        self.save_config()
         # Config extra tags
         if current_value != 0:
             self.extra_tags["pitch"] = current_value
@@ -781,9 +825,23 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.config["APP"]["beep"] = "True" if checked == 2 else "False"
         self.save_config()
 
-    def _on_voice_combo_clicked(self, current_text: str):
+    def _voice_key(self, provider, language):
+        return "voice_choice_" + provider + "_" + language
+
+    def _remember_voice(self):
+        if self.voice_scope and self.speech_voice_combo.currentText():
+            provider, language = self.voice_scope
+            key = self._voice_key(provider, language)
+            if key not in self.config["SPEECH"]:
+                self.config["SPEECH"][key] = self.speech_voice_combo.currentText()
+
+    def _on_voice_combo_clicked(self, current_text):
+        if not current_text or not self.voice_scope:
+            return
+        provider, language = self.voice_scope
         self.config["SPEECH"]["voice"] = current_text
-        self.config["SPEECH"]["voice_" + self.config["SPEECH"].get("target_language")] = current_text
+        self.config["SPEECH"][self._voice_key(provider, language)] = current_text
+        self.config["SPEECH"]["voice_" + language] = current_text
         self.save_config()
 
     def _on_chatbox_delete_button_clicked(self):
@@ -906,7 +964,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.local_voice_note.setVisible(local)
         self.extra_tags_combo.setEnabled(not local)
         self.speech_pitch_slider.setEnabled(not local)
-        saved_voice = self.config["SPEECH"].get("voice")
+        self._remember_voice()
+        language = self.config["SPEECH"].get("target_language")
+        scope = (provider_name, language)
+        saved_voice = self.config["SPEECH"].get(self._voice_key(*scope)) or self.config["SPEECH"].get("voice_" + language)
+        if not saved_voice and (self.voice_scope is None or self.voice_scope == scope):
+            saved_voice = self.config["SPEECH"].get("voice")
+        self.voice_scope = scope
         if local and not piper and self.windows_speech is None:
             try:
                 self.windows_speech = WindowsSpeech()
@@ -925,7 +989,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.speech_voice_combo.setCurrentText(saved_voice)
         self.config["SPEECH"]["voice"] = self.speech_voice_combo.currentText()
         self.speech_voice_combo.blockSignals(False)
-        saved_fallback = self.config["SPEECH"].get("fallback_voice")
+        saved_fallback = self.config["SPEECH"].get("fallback_voice_" + language) or self.config["SPEECH"].get("fallback_voice")
         self.fallback_voice_combo.blockSignals(True)
         self.fallback_voice_combo.clear()
         self.fallback_voice_combo.addItems(VOICES["polly"].get(self.target_language_combo.currentText()) or ["None"])
@@ -1090,14 +1154,14 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         current = self.config["SPEECH"].get("source_language")
         language = second if current == first else first
         previous_target = self.config["SPEECH"].get("target_language")
-        self.config["SPEECH"]["voice_" + previous_target] = self.config["SPEECH"].get("voice")
+        self._remember_voice()
         for combo in (self.source_language_combo, self.target_language_combo):
             combo.blockSignals(True)
             combo.setCurrentText(language)
             combo.blockSignals(False)
         self.config["SPEECH"]["source_language"] = language
         self.config["SPEECH"]["target_language"] = language
-        saved_voice = self.config["SPEECH"].get("voice_" + language)
+        saved_voice = self.config["SPEECH"].get(self._voice_key(self.config["SPEECH"].get("provider"), language)) or self.config["SPEECH"].get("voice_" + language)
         if self.config["SPEECH"].get("provider") == "Piper (offline)" and self.config["SPEECH"].get("piper_model"):
             self.config["SPEECH"]["piper_model_" + previous_target] = self.config["SPEECH"].get("piper_model")
         saved_model = self.config["SPEECH"].get("piper_model_" + language)
@@ -1468,12 +1532,26 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.log_line_edit.clear()
         self.progressbar.setStyleSheet("border-style: none")
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "ui_ready", False):
+            self.geometry_timer.start(250)
+
+    def _save_window_size(self):
+        if not self.ui_ready or self.isMinimized():
+            return
+        size = self.normalGeometry().size() if self.isMaximized() else self.size()
+        self.config["UI"].update(width=str(size.width()), height=str(size.height()), maximized=str(self.isMaximized()))
+        self.save_config()
+
     # pylint: disable=invalid-name, missing-function-docstring
     def closeEvent(self, event):
         if self.output_busy:
             self.log_warning("Wait for speech output to finish before closing.")
             event.ignore()
             return
+        self._save_window_size()
+        self.geometry_timer.stop()
         self._closing = True
         self.preview_timer.stop()
         self.countdown_timer.stop()

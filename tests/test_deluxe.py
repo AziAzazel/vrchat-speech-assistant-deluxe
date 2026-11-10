@@ -451,3 +451,90 @@ def test_capture_failures_back_off_before_reopening_device(gui, window, monkeypa
     window.capture_retry_after = 0
     window._apply_devices(available, available)
     start.assert_called_once()
+
+
+def test_manual_language_dropdown_restores_nonfirst_voice(gui, window, monkeypatch):
+    app, main = gui
+    window.config["SPEECH"]["provider"] = "Amazon Polly"
+    english, polish = ["English first", "English chosen"], ["Polish first", "Polish chosen"]
+    monkeypatch.setitem(main.VOICES["polly"], "English", english)
+    monkeypatch.setitem(main.VOICES["polly"], "Polish", polish)
+    window.target_language_combo.setCurrentText("English")
+    window._append_voices_for_selected_provider()
+    window.speech_voice_combo.setCurrentText("English chosen")
+    window.target_language_combo.setCurrentText("Polish")
+    window.speech_voice_combo.setCurrentText("Polish chosen")
+    window.target_language_combo.setCurrentText("English")
+    assert window.speech_voice_combo.currentText() == "English chosen"
+    window.target_language_combo.setCurrentText("Polish")
+    assert window.speech_voice_combo.currentText() == "Polish chosen"
+
+
+def test_voice_choices_are_separate_per_provider(gui, window, monkeypatch):
+    app, main = gui
+    window.windows_speech = Mock(voices={"SAPI first": "1", "SAPI chosen": "2"})
+    monkeypatch.setitem(main.VOICES["polly"], "English", ["Polly first", "Polly chosen"])
+    window.target_language_combo.setCurrentText("English")
+    window.speech_provider_combo.setCurrentText("Windows Speech")
+    window._append_voices_for_selected_provider()
+    window.speech_voice_combo.setCurrentText("SAPI chosen")
+    window.speech_provider_combo.setCurrentText("Amazon Polly")
+    window.speech_voice_combo.setCurrentText("Polly chosen")
+    window.speech_provider_combo.setCurrentText("Windows Speech")
+    assert window.speech_voice_combo.currentText() == "SAPI chosen"
+    window.speech_provider_combo.setCurrentText("Amazon Polly")
+    assert window.speech_voice_combo.currentText() == "Polly chosen"
+
+
+def test_pitch_and_window_size_survive_restart(gui, window, monkeypatch):
+    app, main = gui
+    window.speech_pitch_slider.setValue(-23)
+    window.resize(700, 620)
+    window._save_window_size()
+    window.close()
+    restarted = main.VRCSpeechAssistantWindow()
+    try:
+        assert restarted.speech_pitch_slider.value() == -23
+        assert restarted.extra_tags["pitch"] == -23
+        assert restarted.width() == 700 and restarted.height() == 620
+        assert restarted.config["SPEECH"]["pitch"] == "-23"
+        restarted.speech_pitch_slider.setValue(0)  # Avoid affecting later tests.
+    finally:
+        restarted.close()
+
+
+def test_cards_reflow_and_labels_wrap(gui, window):
+    app, main = gui
+    window.show()
+    window.resize(650, 700)
+    app.processEvents()
+    assert window.responsive_cards.columns == 1
+    window.resize(1100, 700)
+    app.processEvents()
+    assert window.responsive_cards.columns == 2
+    window.resize(1500, 700)
+    app.processEvents()
+    assert window.responsive_cards.columns == 3
+    assert window.hotkey_state_label.wordWrap()
+    assert window.log_line_edit.wordWrap()
+    assert window.toggle_activate_button.maximumWidth() > 1000
+
+
+def test_legacy_focus_only_settings_migrate_once(gui, window, tmp_path, monkeypatch):
+    app, main = gui
+    window.close()
+    settings = tmp_path / "legacy.ini"
+    settings.write_text("[ROLEPLAY]\nglobal_hotkeys = False\n", encoding="utf-8")
+    monkeypatch.setattr(main, "CONFIG_FILE", settings)
+    legacy = main.VRCSpeechAssistantWindow()
+    try:
+        assert legacy.config["ROLEPLAY"].getboolean("global_hotkeys")
+        assert legacy.global_shortcuts_checkbox.isChecked()
+        legacy.global_shortcuts_checkbox.setChecked(False)
+    finally:
+        legacy.close()
+    opted_out = main.VRCSpeechAssistantWindow()
+    try:
+        assert not opted_out.config["ROLEPLAY"].getboolean("global_hotkeys")
+    finally:
+        opted_out.close()

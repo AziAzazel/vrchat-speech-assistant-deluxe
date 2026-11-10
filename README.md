@@ -13,6 +13,31 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Focus-independent hotkeys, saved voices and responsive UI (1.16.1)
+
+Global Windows hotkeys are enabled by default, including a one-time migration
+of older focus-only configurations. A visible **Global hotkeys (also outside
+this app)** checkbox controls this setting; if you turn it off, your opt-out
+is saved. The registration count is displayed below it. Conflicts are reported
+and recorded in diagnostic logs; customize a conflicting key in Roleplay settings.
+The message queue is initialized before registration. Windows reserves F12 for
+debugging, so old default F12 bindings are migrated once: language switching is
+now **Ctrl+Shift+F10**, pasted speech **Ctrl+Shift+F8**, Stop **Ctrl+Shift+F11**.
+Other custom bindings are retained. The Windows build tests actual native
+registration and background WM_HOTKEY dispatch without a focused Qt window.
+Specific games, overlays and keyboard utilities still need a user hardware test.
+
+Voice selection is remembered for each **provider + target language**, whether
+you use a language dropdown or the quick-switch hotkey. Polly fallback voice
+choices are remembered by target language too. Voice pitch is saved immediately
+and restored at launch, including the actual Polly synthesis setting. Local
+providers still do not support Polly's pitch effect.
+
+The interface reflows whole sections into 1, 2 or 3 columns as you widen the
+window. Descriptions wrap, controls expand with their section, and the banner is
+compact. Narrow windows retain vertical scrolling. The last normal window size
+and maximized state are restored, with dimensions clamped to the current screen.
+
 ## Stop, preview, quick languages and audio recovery (1.16)
 
 **Stop speaking / cancel pending send** or **Ctrl+Shift+F11** stops current playback
@@ -32,7 +57,7 @@ Editing keeps the recognized message's original Chatbox output setting; manual
 pasted messages still use the separate manual Chatbox checkbox. Changes to
 preview settings or language pause a pending draft instead of sending it.
 
-**Ctrl+Shift+F12** switches recognition and output together between English and
+**Ctrl+Shift+F10** switches recognition and output together between English and
 Polish. Choose another pair under Roleplay settings. Keeping source and target
 the same means no DeepL translation. Your selected voices are remembered for each
 target language. Windows voices are matched to English/Polish where recognizable;
@@ -97,12 +122,12 @@ Default hotkeys are editable:
 | Ctrl+Alt+F9 | Next personality |
 | Ctrl+Alt+F10 | Next delivery |
 | Ctrl+Alt+F11 | Start/stop listening |
-| Ctrl+Alt+F12 | Speak pasted text |
+| Ctrl+Shift+F8 | Speak pasted text |
 | Ctrl+Shift+F11 | Stop output / cancel auto-send |
-| Ctrl+Shift+F12 | Switch quick language pair |
+| Ctrl+Shift+F10 | Switch quick language pair |
 
-By default shortcuts work while this app is focused. Enable **global Windows
-hotkeys** in the dialog to use them while VRChat is focused. Only the configured
+Global Windows hotkeys are enabled by default. Turn **global Windows hotkeys**
+off to restrict shortcuts to this app while focused. Only the configured
 combinations are registered; no keyboard hook or keystroke recording is used.
 Unavailable/reserved key combinations report a conflict so you can change them.
 Bindings support Ctrl/Alt/Shift/Win plus letters, digits or F1–F24 (or an unmodified

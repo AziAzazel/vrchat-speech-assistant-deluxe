@@ -41,7 +41,7 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Executable smoke test failed: $($process.ExitCode)" }
           if (-not (Test-Path $report)) { throw "Executable produced no smoke-test report" }
           $result = Get-Content $report | ConvertFrom-Json
-          if ($result.gui -ne "passed" -or $result.sapi_wav -ne "passed" -or $result.sapi_async_wav -ne "passed" -or $result.preview -ne "passed" -or $result.language_switch -ne "passed") { throw "Incomplete smoke test" }
+          if ($result.gui -ne "passed" -or $result.sapi_wav -ne "passed" -or $result.sapi_async_wav -ne "passed" -or $result.preview -ne "passed" -or $result.language_switch -ne "passed" -or $result.native_hotkeys -ne "passed" -or $result.responsive_ui -ne "passed" -or $result.pitch_saved -ne "passed") { throw "Incomplete smoke test" }
           Get-Content $report
       - name: Hash release asset
         shell: pwsh

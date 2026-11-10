@@ -29,6 +29,8 @@ def test_global_registration_routing_conflicts_and_cleanup(monkeypatch):
     emitted = False
     def peek(pointer, *args):
         nonlocal emitted
+        if args[-1] == 0:  # Queue creation, not message consumption.
+            return 0
         if not emitted:
             emitted = True
             pointer._obj.wParam = 1
@@ -43,3 +45,9 @@ def test_global_registration_routing_conflicts_and_cleanup(monkeypatch):
     assert "unavailable" in reports[0]
     assert api.RegisterHotKey.call_args_list[0].args[2] & 0x4000
     api.UnregisterHotKey.assert_called_once_with(None, 1)
+
+
+def test_default_global_keys_avoid_reserved_f12():
+    from vrchat_speech_assistant.roleplay import DEFAULT_HOTKEYS
+    assert all(parse_hotkey(key)[1] != 123 for key in DEFAULT_HOTKEYS.values())
+    assert DEFAULT_HOTKEYS["switch_language"] == "Ctrl+Shift+F10"

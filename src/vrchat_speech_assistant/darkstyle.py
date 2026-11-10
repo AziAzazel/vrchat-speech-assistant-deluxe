@@ -376,6 +376,7 @@ def _material(palette):
     palette.setColor(QPalette.ToolTipBase, QColor(0, 255, 0))
     palette.setColor(QPalette.ToolTipText, QColor(0, 255, 0))
     palette.setColor(QPalette.Text, QColor(227, 227, 227))
+    palette.setColor(QPalette.PlaceholderText, QColor(150, 150, 150))
     palette.setColor(QPalette.Disabled, QPalette.Text, QColor(127, 127, 127))
     palette.setColor(QPalette.Dark, QColor(27, 27, 27))
     palette.setColor(QPalette.Shadow, QColor(27, 27, 27))
