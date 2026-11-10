@@ -217,6 +217,7 @@ def test_personality_hotkey_and_chatbox_tag(gui, window, monkeypatch):
     settings["personality"] = "Corporate AI"
     settings["chatbox_tag"] = "True"
     settings["delivery"] = "Normal"
+    settings["global_hotkeys"] = "False"  # This test exercises Qt's app-scoped shortcut signal.
     window._init_hotkeys()
     greeting = next(s for s in window.shortcuts if s.key().toString() == "Ctrl+Alt+F5")
     greeting.activated.emit()

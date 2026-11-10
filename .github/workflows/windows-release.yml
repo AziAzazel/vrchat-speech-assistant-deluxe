@@ -29,7 +29,7 @@ jobs:
         shell: pwsh
         env:
           PYTHONPATH: src
-        run: python -m pytest -q
+        run: python scripts/run_tests_ci.py
       - name: Build standalone executable
         run: python scripts/build_windows.py
       - name: Smoke-test packaged GUI and local Windows synthesis

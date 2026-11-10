@@ -1,4 +1,4 @@
-VRChat Speech Assistant Deluxe 1.16.1 release candidate 1
+VRChat Speech Assistant Deluxe 1.16.1 release candidate 2
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64). Replace the old executable;
 your settings remain in %APPDATA%/VRChat Speech Assistant.
