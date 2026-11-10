@@ -2,6 +2,8 @@
 
 [Download the Windows executable](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases)
 
+This is vibe-coded but works better than the original in my opinion. If there are any bugs let me know!
+
 The standalone Windows x64 download includes Windows speech, Polly, translation,
 manual text speech and the roleplay controls. No Python installation is needed
 for those features. Piper remains an optional external backend: install Piper
