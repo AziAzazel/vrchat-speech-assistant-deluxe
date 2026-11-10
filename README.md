@@ -1,5 +1,9 @@
 # VRChat Speech Assistant Deluxe
 
+<p align="center">
+  <img src="./Logo%20VR%20Chat%20Speech%20Assistant%20Deluxe.png" alt="VRChat Speech Assistant Deluxe — official project logo" width="420">
+</p>
+
 [Download the Windows executable](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases)
 
 This is vibe-coded but works better than the original in my opinion. If there are any bugs let me know!
@@ -330,9 +334,6 @@ a failure without containing message text or credentials.
 
 # VRChat Speech Assistant
 
-<p align="center">
-  <img src="./src/vrchat_speech_assistant/resources/banner.png">
-</p>
 
 The VRChat Speech Assistant allows you to use a **speech to speech, with automatic translation.**
 And / or speech to text with the **VRChat chatbox** using OSC protocol.
