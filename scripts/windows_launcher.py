@@ -68,9 +68,30 @@ def smoke_test(report):
     assert window.config["SPEECH"]["source_language"] == "Polish"
     window.switch_language()
     assert window.config["SPEECH"]["source_language"] == "English"
+    from vrchat_speech_assistant.history_dialog import HistoryDialog
+    from vrchat_speech_assistant.text_tools import add_random_ending, correct_nicknames
+    window.ending_text.setText(", poi")
+    window.ending_frequency.setValue(100)
+    assert window.config["ENDING"]["frequency"] == "100"
+    assert add_random_ending("Hello.", ", poi", 100) == "Hello, poi."
+    assert correct_nicknames("Hello Nekosan.", {"Nekosan": "Neko-san"}) == "Hello Neko-san."
+    window.cards_by_key["endings"].set_collapsed(False)
+    window.cards_by_key["endings"].set_collapsed(True)
+    assert window.config["UI"].getboolean("collapsed_endings")
+    window.cards_by_key["endings"].set_collapsed(False)
+    assert not window.config["UI"].getboolean("collapsed_endings")
+    window._record_history({"id": 1, "time": "00:00:00", "status": "completed", "language": "English",
+                            "source": "Hello", "result": "Hello, poi.", "spoken": "Hello, poi.",
+                            "provider": "Windows Speech", "voice": "Local"})
+    history = HistoryDialog(window)
+    assert history.table.rowCount() == 1
+    assert history.selected()["result"] == "Hello, poi."
+    history.close()
+    window.clear_history()
+    assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed"}), encoding="utf-8")
 
 
 def main():

@@ -1,30 +1,28 @@
-VRChat Speech Assistant Deluxe 1.16.1 release candidate 2
+VRChat Speech Assistant Deluxe 1.17.0 release candidate 1
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64). Replace the old executable;
-your settings remain in %APPDATA%/VRChat Speech Assistant.
+existing settings remain in %APPDATA%/VRChat Speech Assistant.
 
-Fixes:
-- Global shortcuts are enabled by default and older focus-only settings migrate
-  once. A main-window checkbox and registration count make their scope visible.
-  Explicit later opt-outs and other custom hotkeys remain saved.
-- Initialize the native Windows hotkey message queue before registering keys.
-  Conflicts are reported in the UI and logs.
-- Avoid Windows' reserved F12 in defaults: Ctrl+Shift+F10 switches Polish/English,
-  Ctrl+Shift+F8 speaks pasted text, Ctrl+Shift+F11 stops speech. Old default F12
-  combinations migrate once; other custom bindings are preserved.
-- Remember the selected voice separately for every provider and target language,
-  including changes through the language dropdown and the hotkey. Remember
-  fallback Polly voices per target language too.
-- Save voice pitch immediately and restore it at startup. Local providers still
-  do not implement Polly's pitch effect.
-- Responsive 1/2/3-column layout, wrapping descriptions, expanding controls and
-  compact banner. Remember window size and maximized state across restarts.
+New features:
+- Pronunciation dictionary under Edit: displayed word → spoken respelling,
+  applied after translation to synthesis only. Chatbox spelling is unchanged.
+  Saved separately from nickname corrections in pronunciation.json.
+- Session history from File or the message section: last 50 attempts with source,
+  result, pronunciation and completion/cancellation/failure status. Memory only;
+  nothing is saved to disk or diagnostic logs. Clearable, empty after restart.
+- Load a history source for editing, or repeat its result with the current voice
+  without retranslation or another random ending. Unsent drafts are protected.
+- Collapse whole UI sections by their headers. States are remembered; recognition
+  preview opens the message section when needed. Voice, Chatbox and Random ending
+  start collapsed.
+- Random ending text such as ", poi" or ", desu", with a 0–100% frequency slider:
+  0% never, 100% always. Applies once after translation to speech and chatbox,
+  before final punctuation, with settings saved. Off by default.
 
-The build tests packaged GUI startup, SAPI speech, preview, language switching,
-native background hotkey registration/message dispatch, responsive layout and
-saved pitch. Native hotkey tests do not replace live testing inside VRChat with
-your overlays and keyboard utilities. This is a release candidate and unsigned.
+All prior functionality remains: global hotkeys, per-language/provider voices,
+saved pitch/window size, responsive columns, delayed editable preview, stop
+speech, audio recovery, local Windows speech, optional Polly and external Piper.
 
-All previous features remain, including editable delayed transcripts, cancellation,
-audio-device recovery, optional Polly fallback, external Piper, translation and
-roleplay controls. No Python is needed for the default Windows speech workflow.
+The executable is unsigned. CI verifies the packaged GUI, native hotkey dispatch,
+SAPI WAV generation, pronunciation formatting, history UI, category collapse and
+ending controls. Live audio/VRChat routing still needs user hardware testing.

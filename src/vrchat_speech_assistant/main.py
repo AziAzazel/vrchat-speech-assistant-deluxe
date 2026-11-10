@@ -7,6 +7,7 @@ import json
 import logging
 import threading
 import time
+from datetime import datetime
 import contextlib
 import sys
 import webbrowser
@@ -41,11 +42,11 @@ except ImportError:
 
 
 from vrchat_speech_assistant.diagnostics import DATA_DIR, record_failure
-from vrchat_speech_assistant.text_tools import correct_nicknames, decorate_chatbox
+from vrchat_speech_assistant.text_tools import correct_nicknames, decorate_chatbox, add_random_ending
 from vrchat_speech_assistant.piper_speech import PiperSpeech
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS, announcement, spoken_delivery
 from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
-from vrchat_speech_assistant.responsive_ui import ResponsiveCards
+from vrchat_speech_assistant.responsive_ui import ResponsiveCards, CollapsibleCard
 
 CONFIG_FILE = DATA_DIR / "config.ini"
 RESOURCES_PATH = Path(__file__).parent / "resources"
@@ -103,6 +104,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     status_signal = Signal(str, str)
     activity_signal = Signal(bool)
     hotkey_state_signal = Signal(str)
+    history_entry_signal = Signal(object)
+    history_changed = Signal()
     recognized_signal = Signal(str, int)
     devices_signal = Signal(object, object)
     capture_failed_signal = Signal(object, object)
@@ -120,6 +123,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "input_device": None,
         },
         "UI": {"width": 1000, "height": 800, "maximized": False},
+        "ENDING": {"text": "", "frequency": 0},
         "PREVIEW": {"enabled": True, "delay": 3.0},
         "LANGUAGES": {"first": "English", "second": "Polish"},
         "API": {
@@ -190,6 +194,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.geometry_timer = QTimer(self)
         self.geometry_timer.setSingleShot(True)
         self.geometry_timer.timeout.connect(self._save_window_size)
+        self.history = []
+        self.history_sequence = 0
+        self.history_entry_signal.connect(self._record_history)
         self.output_busy = False
         self.windows_speech = None
         self._closing = False
@@ -236,6 +243,16 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             for action, previous in (("speak_paste", "Ctrl+Alt+F12"), ("switch_language", "Ctrl+Shift+F12")):
                 if self.config["ROLEPLAY"].get("key_" + action) == previous:
                     self.config["ROLEPLAY"]["key_" + action] = DEFAULT_HOTKEYS[action]
+        self.pronunciations = {}
+        try:
+            path = DATA_DIR / "pronunciation.json"
+            if path.exists():
+                rules = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(rules, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in rules.items()):
+                    raise ValueError("Invalid pronunciation dictionary")
+                self.pronunciations = rules
+        except (ValueError, OSError):
+            record_failure("Load pronunciation dictionary", *sys.exc_info()[::2])
         self.chatbox_rules = {}
         try:
             path = DATA_DIR / "chatbox-rules.json"
@@ -283,8 +300,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         file_open_config_folder = file_menu.addAction("Open config folder", self.open_config_folder)
         file_open_config_folder.setIcon(QtGui.QIcon(str(RESOURCES_PATH / "folder.png")))
         file_menu.addAction("Open diagnostic logs", self.open_logs)
+        file_menu.addAction("Session history", self.show_history)
         edit_menu = menu_bar.addMenu("Edit")
         edit_menu.addAction("Nickname corrections", self.edit_nicknames)
+        edit_menu.addAction("Pronunciation dictionary (speech only)", self.edit_pronunciations)
         edit_menu.addAction("Chatbox keyword additions", self.edit_chatbox_rules)
         edit_configuration_action = edit_menu.addAction("Configuration", self.edit_config)
         edit_configuration_action.setIcon(QtGui.QIcon(str(RESOURCES_PATH / "edit.png")))
@@ -348,14 +367,6 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         saved_speech_settings_shown = self.config["SPEECH"].getboolean("show more settings")
         self.speech_groupbox.setVisible(saved_speech_settings_shown)
         speech_groupbox_layout = QtWidgets.QVBoxLayout(self.speech_groupbox)
-        ######### Speech groupbox more options #########
-        speech_more_options_checkbox = QtWidgets.QCheckBox("Show Speech settings")
-        speech_more_options_checkbox.setStyleSheet(
-            "QCheckBox::indicator:unchecked {image:url(:/icons/right-arrow.png);}"
-            "QCheckBox::indicator:checked {image:url(:/icons/down-arrow.png);}"
-        )
-        speech_more_options_checkbox.stateChanged.connect(self._on_speech_show_more_options_clicked)
-        speech_more_options_checkbox.setChecked(saved_speech_settings_shown)
         ######### Speech provider widget #########
         speech_provider_label = QtWidgets.QLabel("Speech provider:")
         self.speech_provider_combo = QtWidgets.QComboBox()
@@ -424,14 +435,6 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         saved_chatbox_settings_shown = self.config["CHATBOX"].getboolean("show more settings")
         self.chatbox_groupbox.setVisible(saved_chatbox_settings_shown)
         chatbox_groupbox_layout = QtWidgets.QVBoxLayout(self.chatbox_groupbox)
-        ######### Chatbox groupbox more options #########
-        chatbox_more_options_checkbox = QtWidgets.QCheckBox("Show Chatbox settings")
-        chatbox_more_options_checkbox.setStyleSheet(
-            "QCheckBox::indicator:unchecked {image:url(:/icons/right-arrow.png);}"
-            "QCheckBox::indicator:checked {image:url(:/icons/down-arrow.png);}"
-        )
-        chatbox_more_options_checkbox.stateChanged.connect(self._on_chatbox_show_more_options_clicked)
-        chatbox_more_options_checkbox.setChecked(saved_chatbox_settings_shown)
         ######### Font widget #########
         font_label = QtWidgets.QLabel("Font")
         self.font_combo = QtWidgets.QComboBox()
@@ -513,28 +516,48 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.hotkey_state_label = QtWidgets.QLabel()
         self.hotkey_state_label.setWordWrap(True)
         self.hotkey_state_signal.connect(self.hotkey_state_label.setText)
-        def card(title, widgets):
-            group = QtWidgets.QGroupBox(title)
-            layout = QtWidgets.QVBoxLayout(group)
-            layout.setContentsMargins(10, 30, 10, 12)
+        self.cards_by_key = {}
+        def card(title, widgets, key):
+            collapsed = self.config["UI"].getboolean("collapsed_" + key, fallback=key in ("voice", "chatbox", "endings"))
+            group = CollapsibleCard(title, collapsed)
+            group.collapsedChanged.connect(lambda value, name=key: self._save_collapsed(name, value))
+            self.cards_by_key[key] = group
             for widget in widgets:
-                layout.addWidget(widget)
+                group.content_layout.addWidget(widget)
             return group
         # Reparenting widgets removes them from their previous layout.
         input_card = card("Input, languages and controls", [
             input_device_label, self.input_device_combo, source_language_label, self.source_language_combo,
             target_language_label, self.target_language_combo, formality_label, self.formality_combo,
             self.beep_status_checkbox, self.global_shortcuts_checkbox, self.hotkey_state_label,
-            self.toggle_activate_button, refresh_button])
-        message_card = card("Message preview and speech", [self.manual_text, self.preview_checkbox])
-        message_card.layout().addLayout(delay_row)
+            self.toggle_activate_button, refresh_button], "inputs")
+        message_card = card("Message preview and speech", [self.manual_text, self.preview_checkbox], "messages")
+        message_card.content_layout.addLayout(delay_row)
         for widget in (self.draft_status, self.edit_message_button, self.manual_chatbox,
                        self.speak_button, self.stop_speech_button):
-            message_card.layout().addWidget(widget)
-        voice_card = card("Voice settings", [self.speech_status_checkbox, speech_more_options_checkbox, self.speech_groupbox])
-        chatbox_card = card("VRChat Chatbox", [self.chatbox_status_checkbox, chatbox_more_options_checkbox,
-                                             self.chatbox_groupbox, chatbox_delete_button])
-        self.responsive_cards = ResponsiveCards([input_card, message_card, voice_card, chatbox_card])
+            message_card.content_layout.addWidget(widget)
+        history_button = QtWidgets.QPushButton("Session history")
+        history_button.clicked.connect(self.show_history)
+        message_card.content_layout.addWidget(history_button)
+        self.speech_groupbox.setVisible(True)
+        self.chatbox_groupbox.setVisible(True)
+        voice_card = card("Voice settings", [self.speech_status_checkbox, self.speech_groupbox], "voice")
+        chatbox_card = card("VRChat Chatbox", [self.chatbox_status_checkbox,
+                                             self.chatbox_groupbox, chatbox_delete_button], "chatbox")
+        self.ending_text = QtWidgets.QLineEdit(self.config["ENDING"].get("text"))
+        self.ending_text.setMaxLength(120)
+        self.ending_text.setPlaceholderText(", poi or , desu")
+        self.ending_text.textChanged.connect(self._ending_settings_changed)
+        self.ending_frequency = QtWidgets.QSlider(Qt.Horizontal)
+        self.ending_frequency.setRange(0, 100)
+        self.ending_frequency.setValue(max(0, min(100, self.config["ENDING"].getint("frequency"))))
+        self.ending_frequency.valueChanged.connect(self._ending_settings_changed)
+        self.ending_frequency_label = QtWidgets.QLabel()
+        note = QtWidgets.QLabel("Added once after translation, to speech and chatbox. 0% = never; 100% = always.")
+        note.setWordWrap(True)
+        ending_card = card("Random ending", [self.ending_text, self.ending_frequency_label, self.ending_frequency, note], "endings")
+        self._update_ending_label()
+        self.responsive_cards = ResponsiveCards([input_card, message_card, voice_card, chatbox_card, ending_card])
         main_layout.addWidget(self.responsive_cards)
         main_layout.addWidget(self.log_line_edit)
         main_layout.addWidget(self.progressbar)
@@ -558,6 +581,63 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if self.config["SPEECH"].getboolean("enabled"):
             self._check_selected_speech_provider()
         self.toggle_activate_button.setFocus()
+
+    def _save_collapsed(self, name, collapsed):
+        self.config["UI"]["collapsed_" + name] = str(collapsed)
+        self.save_config()
+
+    def _update_ending_label(self):
+        value = self.ending_frequency.value()
+        description = "never" if value == 0 else "always" if value == 100 else "chance per utterance"
+        self.ending_frequency_label.setText(f"{value}% — {description}")
+
+    def _ending_settings_changed(self, *args):
+        self.config["ENDING"]["text"] = self.ending_text.text()
+        self.config["ENDING"]["frequency"] = str(self.ending_frequency.value())
+        self._update_ending_label()
+        self.save_config()
+
+    def _record_history(self, entry):
+        self.history.append(dict(entry))
+        self.history = self.history[-50:]
+        self.history_changed.emit()
+
+    def clear_history(self):
+        self.history.clear()
+        self.history_changed.emit()
+
+    def show_history(self):
+        from vrchat_speech_assistant.history_dialog import HistoryDialog
+        dialog = HistoryDialog(self)
+        self.history_changed.connect(dialog.refresh)
+        try:
+            dialog.exec()
+        finally:
+            self.history_changed.disconnect(dialog.refresh)
+            dialog.deleteLater()
+
+    def load_history_source(self, entry):
+        if self.pending_draft or (self.editor_dirty and self.manual_text.toPlainText().strip()):
+            self.log_warning("Send or clear the unsent draft before loading a history entry.")
+            return False
+        self.preview_timer.stop()
+        self.countdown_timer.stop()
+        self.manual_text.setPlainText(entry["source"])
+        self.cards_by_key["messages"].set_collapsed(False)
+        self.manual_text.setFocus()
+        return True
+
+    def replay_history(self, entry):
+        if self.output_busy:
+            self.log_warning("Speech is busy. Stop or wait before replaying.")
+            return False
+        if self.pending_draft or self.editor_dirty:
+            self.log_warning("Send or clear the unsent draft before replaying history.")
+            return False
+        if not entry["result"]:
+            return False
+        return bool(self._start_output(entry["result"], self.manual_chatbox.isChecked(), manual=True,
+                                       already_translated=True, apply_ending=False))
 
     def _init_translator(self):
         api_key = self.config["API"].get("deepl_api_key") or _config.DEEPL_API_KEY
@@ -1267,6 +1347,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self._start_output(text, self.config["CHATBOX"].getboolean("enabled"))
             return
         self.pending_draft = True
+        self.cards_by_key["messages"].set_collapsed(False)
         self.loading_editor = True
         self.manual_text.setPlainText(text)
         scroll = self.findChild(QtWidgets.QScrollArea)
@@ -1340,7 +1421,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._voice_activity(False)
         self.log_info("Output cancelled. Any in-flight cloud request will be discarded when it returns.")
 
-    def _start_output(self, text, send_chatbox, manual=False):
+    def _start_output(self, text, send_chatbox, manual=False, already_translated=False, apply_ending=True):
         if self._closing or self.output_busy:
             return
         if not text.strip():
@@ -1363,6 +1444,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         config = {section: dict(self.config[section]) for section in ("SPEECH", "TRANSLATOR", "CHATBOX")}
         provider, translator = self.speech_provider, self.translator
         tags, corrections = dict(self.extra_tags), dict(self.corrections)
+        pronunciations = dict(self.pronunciations)
+        ending_text = self.config["ENDING"].get("text")
+        ending_frequency = self.config["ENDING"].getint("frequency") if apply_ending else 0
         roleplay = dict(self.config["ROLEPLAY"])
         delivery = roleplay.get("delivery", "Normal")
         if delivery == "Confidential whisper" and self.config["SPEECH"].get("provider") != "Amazon Polly":
@@ -1377,14 +1461,19 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.speak_button.setEnabled(False)
         self._voice_activity(True)
 
+        self.history_sequence += 1
+        entry = {"id": self.history_sequence, "time": datetime.now().strftime("%H:%M:%S"),
+                 "source": text, "result": "", "spoken": "", "status": "failed",
+                 "language": config["SPEECH"]["target_language"], "provider": config["SPEECH"]["provider"],
+                 "voice": config["SPEECH"]["voice"]}
         def output():
             stage = "Nickname correction"
             try:
-                result = correct_nicknames(text.strip(), corrections)
+                result = text.strip() if already_translated else correct_nicknames(text.strip(), corrections)
                 check_cancelled()
                 corrected_source = result
                 speech = config["SPEECH"]
-                if translator and speech["source_language"] != speech["target_language"]:
+                if not already_translated and translator and speech["source_language"] != speech["target_language"]:
                     stage = "Translation"
                     options = config["TRANSLATOR"]
                     result = translator.translate_text(
@@ -1394,9 +1483,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                         formality={"Default": "default", "Formal": "prefer_more", "Informal": "prefer_less"}[options["formality"]],
                     ).text
                 check_cancelled()
+                result = add_random_ending(result, ending_text, ending_frequency)
+                spoken = spoken_delivery(correct_nicknames(result, pronunciations), tags)
+                entry["result"], entry["spoken"] = result, spoken
                 if provider and speech["voice"] != "None":
                     stage = "Synthesis/audio playback"
-                    provider.speech(spoken_delivery(result, tags), speech["voice"], speech["output_device"], tags)
+                    provider.speech(spoken, speech["voice"], speech["output_device"], tags)
                 check_cancelled()
                 if send_chatbox:
                     stage = "Chatbox output"
@@ -1407,9 +1499,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                             chatbox_text = tag + " " + chatbox_text
                     write_chatbox(client, chatbox_text, font=config["CHATBOX"]["font"],
                                   chunk_length=25 if config["CHATBOX"]["animation"].lower() == "true" else 0)
+                entry["status"] = "completed"
                 logger.info("Output completed; manual=%s; chatbox=%s", manual, send_chatbox)
                 self.status_signal.emit("info", "Output completed.")
             except OutputCancelled:
+                entry["status"] = "cancelled"
                 self.status_signal.emit("info", "Speech stopped; unsent chatbox output cancelled.")
             except Exception:
                 if stage == "Synthesis/audio playback":
@@ -1417,6 +1511,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 record_failure(stage, *sys.exc_info()[::2])
                 self.status_signal.emit("error", stage + " failed. See diagnostic logs.")
             finally:
+                self.history_entry_signal.emit(entry)
                 self.finished_signal.emit()
 
         def scoped_output():
@@ -1431,22 +1526,31 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._voice_activity(False)
 
     def edit_nicknames(self):
-        self._edit_text_rules(False)
+        self._edit_text_rules("nicknames")
 
     def edit_chatbox_rules(self):
-        self._edit_text_rules(True)
+        self._edit_text_rules("chatbox")
 
-    def _edit_text_rules(self, chatbox):
+    def edit_pronunciations(self):
+        self._edit_text_rules("pronunciation")
+
+    def _edit_text_rules(self, kind):
+        chatbox = kind == "chatbox"
+        pronunciation = kind == "pronunciation"
         dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Chatbox keyword additions" if chatbox else "Nickname corrections")
+        dialog.setWindowTitle("Pronunciation dictionary — speech only" if pronunciation else "Chatbox keyword additions" if chatbox else "Nickname corrections")
         layout = QtWidgets.QVBoxLayout(dialog)
-        layout.addWidget(QtWidgets.QLabel(
+        description = QtWidgets.QLabel(
             "Keyword → appended text / emoji / link (chatbox only; images cannot be embedded)"
-            if chatbox else "Recognized name → replacement (before translation and speech)"))
+            if chatbox else "Displayed word → spoken pronunciation (after translation; chatbox unchanged)" if pronunciation
+            else "Recognized name → replacement (before translation and speech)")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+        dialog.resize(650, 420)
         table = QtWidgets.QTableWidget(0, 2)
-        table.setHorizontalHeaderLabels(["Keyword", "Append text / emoji / link"] if chatbox else ["Recognized phrase", "Correct name / pronunciation"])
+        table.setHorizontalHeaderLabels(["Keyword", "Append text / emoji / link"] if chatbox else ["Displayed word", "Spoken pronunciation"] if pronunciation else ["Recognized phrase", "Correct name"])
         layout.addWidget(table)
-        for key, value in (self.chatbox_rules if chatbox else self.corrections).items():
+        for key, value in (self.chatbox_rules if chatbox else self.pronunciations if pronunciation else self.corrections).items():
             row = table.rowCount()
             table.insertRow(row)
             table.setItem(row, 0, QtWidgets.QTableWidgetItem(key))
@@ -1466,12 +1570,14 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 if key and key.text().strip() and value:
                     corrections[key.text().strip()] = value.text()
             try:
-                path = DATA_DIR / ("chatbox-rules.json" if chatbox else "nicknames.json")
+                path = DATA_DIR / ("chatbox-rules.json" if chatbox else "pronunciation.json" if pronunciation else "nicknames.json")
                 temporary = path.with_suffix(".tmp")
                 temporary.write_text(json.dumps(corrections, ensure_ascii=False, indent=2), encoding="utf-8")
                 temporary.replace(path)
                 if chatbox:
                     self.chatbox_rules = corrections
+                elif pronunciation:
+                    self.pronunciations = corrections
                 else:
                     self.corrections = corrections
             except OSError:

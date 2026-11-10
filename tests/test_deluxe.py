@@ -18,6 +18,7 @@ def window(gui, monkeypatch):
     monkeypatch.setattr(main.VRCSpeechAssistantWindow, "_check_selected_speech_provider", lambda self: None)
     window = main.VRCSpeechAssistantWindow()
     window.preview_checkbox.setChecked(False)
+    window.ending_frequency.setValue(0)
     window.speech_provider = Mock()
     yield window
     wait_output(app, window)
@@ -539,3 +540,124 @@ def test_legacy_focus_only_settings_migrate_once(gui, window, tmp_path, monkeypa
         assert not opted_out.config["ROLEPLAY"].getboolean("global_hotkeys")
     finally:
         opted_out.close()
+
+
+def test_pronunciation_and_random_ending_after_translation(gui, window, monkeypatch):
+    app, main = gui
+    chatbox = Mock()
+    monkeypatch.setattr(main, "write_chatbox", chatbox)
+    window.config["ROLEPLAY"].update(chatbox_tag="False", delivery="Normal")
+    window.pronunciations = {"Nekosan": "Neko-san"}
+    window.config["SPEECH"].update(source_language="English", target_language="French")
+    window.translator = Mock()
+    window.translator.translate_text.return_value.text = "Bonjour Nekosan!"
+    window.ending_text.setText(", desu")
+    window.ending_frequency.setValue(100)
+    window.manual_chatbox.setChecked(True)
+    window.manual_text.setPlainText("Hello Nekosan!")
+    window.speak_manual_text()
+    wait_output(app, window)
+    assert window.speech_provider.speech.call_args.args[0] == "Bonjour Neko-san, desu!"
+    assert chatbox.call_args.args[1] == "Bonjour Nekosan, desu!"
+    entry = window.history[-1]
+    assert entry["source"] == "Hello Nekosan!"
+    assert entry["spoken"] == "Bonjour Neko-san, desu!"
+    assert entry["status"] == "completed"
+    window.ending_text.setText(", poi")
+    assert window.replay_history(entry)
+    wait_output(app, window)
+    assert window.translator.translate_text.call_count == 1
+    assert chatbox.call_args.args[1] == "Bonjour Nekosan, desu!"
+    assert window.history[-1]["result"] == entry["result"]
+
+
+def test_history_is_bounded_clearable_and_load_does_not_overwrite_draft(gui, window):
+    from vrchat_speech_assistant.history_dialog import HistoryDialog
+    for index in range(60):
+        window._record_history({"id": index, "time": "12:00:00", "status": "completed", "language": "English",
+                                "source": f"Original {index}", "result": f"Result {index}", "spoken": f"Spoken {index}",
+                                "provider": "Windows Speech", "voice": "Local"})
+    assert len(window.history) == 50 and window.history[0]["id"] == 10
+    dialog = HistoryDialog(window)
+    try:
+        assert dialog.table.rowCount() == 50
+        assert dialog.selected()["id"] == 59
+        window.manual_text.setPlainText("unsent draft")
+        assert not window.load_history_source(dialog.selected())
+        assert window.manual_text.toPlainText() == "unsent draft"
+        window.manual_text.clear()
+        dialog.load_button.click()
+        assert window.manual_text.toPlainText() == "Original 59"
+        assert window.editor_dirty
+        window.clear_history()
+        assert not window.history
+    finally:
+        dialog.close()
+
+
+def test_history_marks_cancelled_and_failed_output(gui, window):
+    import threading
+    from vrchat_speech_assistant.output_control import check_cancelled
+    app, main = gui
+    entered = threading.Event()
+    def speak(*args):
+        entered.set()
+        while True:
+            check_cancelled()
+            time.sleep(.01)
+    window.speech_provider.speech.side_effect = speak
+    window.manual_text.setPlainText("stop this")
+    window.speak_manual_text()
+    assert entered.wait(1)
+    window.stop_speaking()
+    wait_output(app, window)
+    assert window.history[-1]["status"] == "cancelled"
+    window.speech_provider.speech.side_effect = RuntimeError("provider failure")
+    window.manual_text.setPlainText("failed output")
+    window.speak_manual_text()
+    wait_output(app, window)
+    assert window.history[-1]["status"] == "failed"
+
+
+def test_whole_category_and_ending_preferences_survive_restart(gui, window):
+    app, main = gui
+    window.cards_by_key["inputs"].set_collapsed(True)
+    window.cards_by_key["voice"].set_collapsed(False)
+    window.ending_text.setText(", poi")
+    window.ending_frequency.setValue(37)
+    window.close()
+    restarted = main.VRCSpeechAssistantWindow()
+    try:
+        assert restarted.cards_by_key["inputs"].is_collapsed()
+        assert not restarted.cards_by_key["voice"].is_collapsed()
+        assert restarted.ending_text.text() == ", poi"
+        assert restarted.ending_frequency.value() == 37
+        assert not restarted.history  # History is never persisted.
+        restarted.ending_frequency.setValue(0)
+    finally:
+        restarted.close()
+
+
+def test_preview_expands_message_category(gui, window):
+    window.cards_by_key["messages"].set_collapsed(True)
+    window.preview_checkbox.setChecked(True)
+    window._submit_recognized("Edit me")
+    assert not window.cards_by_key["messages"].is_collapsed()
+    assert window.manual_text.toPlainText() == "Edit me"
+
+
+def test_pronunciation_editor_saves_persistent_rules(gui, window, monkeypatch, tmp_path):
+    app, main = gui
+    monkeypatch.setattr(main, "DATA_DIR", tmp_path)
+    def accept_dictionary(dialog):
+        table = dialog.findChild(main.QtWidgets.QTableWidget)
+        table.setRowCount(1)
+        table.setItem(0, 0, main.QtWidgets.QTableWidgetItem("Nekosan"))
+        table.setItem(0, 1, main.QtWidgets.QTableWidgetItem("Neko-san"))
+        return main.QtWidgets.QDialog.Accepted
+    monkeypatch.setattr(main.QtWidgets.QDialog, "exec", accept_dictionary)
+    window.edit_pronunciations()
+    assert window.pronunciations == {"Nekosan": "Neko-san"}
+    assert 'Neko-san' in (tmp_path / 'pronunciation.json').read_text()
+    window._init_config()
+    assert window.pronunciations == {"Nekosan": "Neko-san"}

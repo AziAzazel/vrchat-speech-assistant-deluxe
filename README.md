@@ -13,6 +13,47 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Pronunciation, history, collapsible sections and random endings (1.17)
+
+**Edit → Pronunciation dictionary (speech only)** maps a displayed name/word to a
+spoken respelling, for example `Nekosan → Neko-san`. Matching ignores case and uses
+whole words/phrases. Rules run after translation and the optional ending, just
+before synthesis. They never change chatbox spelling. These are literal text
+respellings, not IPA/SSML commands. The older nickname corrections still apply
+before translation to both outputs; pronunciation is a separate dictionary,
+saved in `pronunciation.json` alongside configuration.
+
+**Session history** is available from File or the message section. It keeps the
+last 50 accepted output attempts in memory only, with original text, resulting
+text, spoken pronunciation, language/voice and completed/cancelled/failed status.
+It is not written to disk or diagnostic logs and starts empty after restart.
+Clear history removes its current entries. A failed or cancelled entry does not
+mean every output was delivered: speech may have played before a chatbox failure.
+
+- **Load original into editor** lets you correct and send again using current
+  translation/settings. It refuses to replace an unsent draft; clear or send that
+  draft first.
+- **Repeat result** speaks the selected result with current voice, pronunciation
+  and delivery settings. It skips translation, nickname correction and another
+  ending lottery, so the existing ending is not duplicated. Current chatbox
+  effects and the manual Chatbox toggle still apply.
+
+Click any section header to collapse/expand its entire category. Voice settings,
+Chatbox and Random ending start collapsed. Every section's state is remembered.
+Recognition preview automatically opens the message section when needed so an
+editable draft/countdown is not hidden. The former inner Show settings controls
+are replaced by these whole-section headers.
+
+Open **Random ending**, enter a suffix such as `, poi` or `, desu`, and set the
+frequency slider: **0% never**, **100% always**, other values are a probability for
+each accepted utterance, not a fixed every-N counter. It starts at 0% with no
+text, so nothing changes until configured. Both the text (up to 120 characters)
+and frequency are remembered. One lottery is made after translation for the
+whole utterance, shared by speech/chatbox and any Polly fallback. A leading comma
+attaches directly; a bare word gets a separating space. Final punctuation is
+kept after the ending (`Hello! → Hello, poi!`). Pronunciation changes only the
+spoken copy. Chatbox keyword additions may also match the resulting ending.
+
 ## Focus-independent hotkeys, saved voices and responsive UI (1.16.1)
 
 Global Windows hotkeys are enabled by default, including a one-time migration
@@ -178,7 +219,7 @@ be tested with your downloaded model.
 1. Open **Edit → Chatbox keyword additions**.
 2. Add a keyword and the text/emoji/link to append, for example `hello → 👋`
    or `system → [AI ONLINE]`, then Save.
-3. Enable **Show Chatbox settings → Enable keyword text / emoji additions**.
+3. Enable **VRChat Chatbox → Enable keyword text / emoji additions**.
 
 Rules apply to both recognized and pasted messages when their chatbox output
 is enabled. They do not affect synthesized speech. Matching ignores case and
@@ -196,7 +237,7 @@ keep additions short. Existing animation and font settings still apply.
 
 ## Local Windows speech and optional Polly fallback
 
-Open **Show Speech settings → Speech provider → Windows Speech**, then select
+Open **Voice settings → Speech provider → Windows Speech**, then select
 an installed voice and your output device (for example Cable Input). This works
 for both microphone recognition and pasted text. New configurations default to
 Windows Speech; existing configurations keep their saved provider until changed.

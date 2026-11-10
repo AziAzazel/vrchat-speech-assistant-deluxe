@@ -24,3 +24,20 @@ def decorate_chatbox(text, rules, source_text=""):
             if addition not in additions:
                 additions.append(addition)
     return " ".join([text, *additions])
+
+
+def add_random_ending(text, suffix, frequency, draw=None):
+    """Append once before final punctuation; 0 never draws, 100 always applies."""
+    import random
+    frequency = max(0, min(100, int(frequency)))
+    if not suffix.strip() or frequency == 0:
+        return text
+    if frequency < 100 and (draw or random.random)() >= frequency / 100:
+        return text
+    match = re.match(r"^(.*?)([.!?…]+)$", text.rstrip(), flags=re.S)
+    body, punctuation = match.groups() if match else (text.rstrip(), "")
+    ending = suffix.rstrip()
+    separator = "" if ending[0].isspace() or ending[0] in ",;:.!?…" else " "
+    if ending[-1] in ".!?…":
+        punctuation = ""
+    return body + separator + ending + punctuation
