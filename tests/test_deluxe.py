@@ -269,7 +269,7 @@ def test_roleplay_settings_save_and_preserve_deepl_formality(gui, window):
     assert window.config["ROLEPLAY"]["delivery"] == "Measured"
     assert window.config["ROLEPLAY"]["phrase_greeting"] == "Custom greeting"
     assert window.config["TRANSLATOR"]["formality"] == "Informal"
-    assert len(window.shortcuts) == 10
+    assert len(window.shortcuts) == 10 + sum(bool(preset["key"]) for preset in window.soundboard_presets)
     window.config["ROLEPLAY"]["delivery"] = "Normal"
 
 
@@ -698,3 +698,85 @@ def test_failed_scan_preserves_devices_listener_and_allows_retry(gui, window, mo
     assert window.is_listener_running and not window.device_scan_busy
     stop.assert_not_called()
     assert 'keeping the last device list' in window.log_line_edit.text()
+
+
+@pytest.mark.parametrize('mode,speech_expected,chatbox_expected', [
+    ('Voice only', True, False), ('Chatbox only', False, True), ('Voice + chatbox', True, True)])
+def test_soundboard_routes_exact_phrase_without_changing_language(gui, window, monkeypatch, mode, speech_expected, chatbox_expected):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    app, main = gui
+    window.config['API'].update(aws_access_key='test-access', aws_secret_key='test-secret')
+    window.config['SPEECH'].update(source_language='Polish', target_language='English', enabled='False')
+    window.config['CHATBOX']['enabled'] = 'False'
+    window.config['ROLEPLAY'].update(delivery='Confidential whisper', chatbox_tag='True')
+    window.extra_tags = {'whispered': True, 'pitch': -20}
+    window.config['ENDING'].update(text=', desu', frequency='100')
+    window.pronunciations = {'ぽい': 'wrong'}
+    window.manual_text.setPlainText('Keep this draft')
+    window.translator = Mock()
+    window.osc_client = Mock()
+    chatbox, cloud = Mock(), Mock()
+    monkeypatch.setattr(main, 'write_chatbox', chatbox)
+    monkeypatch.setattr(main, 'Polly', Mock(return_value=cloud))
+    preset = dict(DEFAULT_PRESETS[0], output=mode)
+    before = dict(window.config['SPEECH'])
+    assert window.play_soundboard(preset)
+    wait_output(app, window)
+    assert cloud.speech.called == speech_expected
+    if speech_expected:
+        cloud.speech.assert_called_once_with('ぽい', 'Mizuki', 'Test device', {})
+    assert chatbox.called == chatbox_expected
+    if chatbox_expected:
+        assert chatbox.call_args.args[1] == 'ぽい'
+    else:
+        window.osc_client.send_message.assert_not_called()
+    window.translator.translate_text.assert_not_called()
+    window.speech_provider.speech.assert_not_called()
+    assert dict(window.config['SPEECH']) == before
+    assert window.manual_text.toPlainText() == 'Keep this draft'
+    assert window.history[-1]['language'] == 'Japanese'
+
+
+def test_soundboard_text_only_needs_no_voice_keys_or_audio_device(gui, window, monkeypatch):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    app, main = gui
+    window.config['API'].update(aws_access_key='', aws_secret_key='')
+    window.output_devices = []
+    cloud, chatbox = Mock(), Mock()
+    monkeypatch.setattr(main, 'Polly', cloud)
+    monkeypatch.setattr(main, 'write_chatbox', chatbox)
+    assert window.play_soundboard(dict(DEFAULT_PRESETS[0], output='Chatbox only', voice=''))
+    wait_output(app, window)
+    cloud.assert_not_called()
+    assert chatbox.call_args.args[1] == 'ぽい'
+
+
+def test_soundboard_busy_does_not_queue_or_replace_draft(gui, window):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    window.output_busy = True
+    window.manual_text.setPlainText('draft')
+    assert not window.play_soundboard(DEFAULT_PRESETS[0])
+    assert window.manual_text.toPlainText() == 'draft'
+    assert 'not queued' in window.log_line_edit.text()
+    window.output_busy = False
+
+
+def test_soundboard_dialog_persists_and_registers_shortcut(gui, window, monkeypatch):
+    from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
+    app, main = gui
+    dialog = SoundboardDialog(window)
+    assert dialog.table.cellWidget(0, 2).currentText() == 'Japanese'
+    assert dialog.table.cellWidget(0, 5).currentText() == 'Mizuki'
+    dialog.table.cellWidget(0, 3).setCurrentText('Chatbox only')
+    dialog.save()
+    window._init_config()
+    assert window.soundboard_presets[0]['output'] == 'Chatbox only'
+    if main.sys.platform != 'win32':
+        assert any(shortcut.key().toString() == 'Ctrl+;' for shortcut in window.shortcuts)
+
+
+def test_soundboard_hotkey_dispatch_uses_saved_row(gui, window, monkeypatch):
+    play = Mock()
+    monkeypatch.setattr(window, 'play_soundboard', play)
+    window.roleplay_action('soundboard_0')
+    play.assert_called_once_with(window.soundboard_presets[0])

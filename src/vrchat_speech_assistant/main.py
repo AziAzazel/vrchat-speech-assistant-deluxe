@@ -48,6 +48,7 @@ from vrchat_speech_assistant.text_tools import correct_nicknames, decorate_chatb
 from vrchat_speech_assistant.piper_speech import PiperSpeech
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS, announcement, spoken_delivery
 from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
+from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS, validate_presets, LazySpeech
 from vrchat_speech_assistant.responsive_ui import ResponsiveCards, CollapsibleCard
 
 CONFIG_FILE = DATA_DIR / "config.ini"
@@ -200,6 +201,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.history_sequence = 0
         self.history_entry_signal.connect(self._record_history)
         self.output_busy = False
+        self.output_chatbox_active = None
         self.windows_speech = None
         self._closing = False
         self.translator = None
@@ -245,6 +247,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             for action, previous in (("speak_paste", "Ctrl+Alt+F12"), ("switch_language", "Ctrl+Shift+F12")):
                 if self.config["ROLEPLAY"].get("key_" + action) == previous:
                     self.config["ROLEPLAY"]["key_" + action] = DEFAULT_HOTKEYS[action]
+        if not self.config.has_section("SOUNDBOARD"):
+            self.config["SOUNDBOARD"] = {"presets": json.dumps(DEFAULT_PRESETS, ensure_ascii=False)}
+        self.soundboard_presets = []
+        try:
+            self.soundboard_presets = validate_presets(json.loads(self.config["SOUNDBOARD"].get("presets", "[]")))
+        except (ValueError, TypeError):
+            record_failure("Load soundboard presets", *sys.exc_info()[::2])
         self.pronunciations = {}
         try:
             path = DATA_DIR / "pronunciation.json"
@@ -311,6 +320,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         edit_configuration_action.setIcon(QtGui.QIcon(str(RESOURCES_PATH / "edit.png")))
         roleplay_menu = menu_bar.addMenu("Roleplay")
         roleplay_menu.addAction("Personality, delivery and hotkeys", self.edit_roleplay)
+        roleplay_menu.addAction("Soundboard phrases and hotkeys", self.edit_soundboard)
         for action in ACTIONS[:4]:
             roleplay_menu.addAction(action.title(), lambda checked=False, name=action: self.roleplay_action(name))
         more_menu = menu_bar.addMenu("More")
@@ -688,6 +698,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
         RoleplayDialog(self).exec()
 
+    def edit_soundboard(self):
+        from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
+        SoundboardDialog(self).exec()
+
     def _set_global_hotkeys(self, enabled):
         self.config["ROLEPLAY"]["global_hotkeys"] = str(enabled)
         self.save_config()
@@ -711,8 +725,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.global_shortcuts_checkbox.blockSignals(False)
         bindings = {}
         seen = set()
-        for action in ACTIONS:
-            key = settings.get("key_" + action, DEFAULT_HOTKEYS[action])
+        configured = [(action, settings.get("key_" + action, DEFAULT_HOTKEYS[action])) for action in ACTIONS]
+        configured += [("soundboard_" + str(index), preset["key"]) for index, preset in enumerate(self.soundboard_presets)]
+        for action, key in configured:
             if key:
                 try:
                     canonical = parse_hotkey(key)
@@ -721,7 +736,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                     seen.add(canonical)
                     bindings[action] = key
                 except ValueError:
-                    self.log_warning("Invalid hotkey for " + action + "; edit Roleplay settings.")
+                    self.log_warning("Invalid hotkey for " + action + "; edit Roleplay/Soundboard settings.")
         if settings.getboolean("global_hotkeys") and sys.platform == "win32":
             self.global_hotkeys = GlobalHotkeys(
                 bindings, lambda action: self.command_signal.emit(lambda: self.roleplay_action(action)),
@@ -742,7 +757,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if self._closing:
             return
         settings = self.config["ROLEPLAY"]
-        if action == "stop_speaking":
+        if action.startswith("soundboard_"):
+            try:
+                preset = self.soundboard_presets[int(action.removeprefix("soundboard_"))]
+            except (ValueError, IndexError):
+                return
+            self.play_soundboard(preset)
+        elif action == "stop_speaking":
             self.stop_speaking()
         elif action == "switch_language":
             self.switch_language()
@@ -1105,6 +1126,49 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._update_polly_capabilities()
         self.save_config()
 
+    def play_soundboard(self, preset):
+        if self._closing or self.output_busy:
+            self.log_warning("Speech is busy; soundboard phrase was not queued.")
+            return
+        try:
+            validate_presets([preset])
+            speech = dict(self.config["SPEECH"])
+            speech.update(provider=preset["provider"], voice=preset["voice"],
+                          source_language=preset["language"], target_language=preset["language"])
+            spoken = preset["output"] != "Chatbox only"
+            provider = None
+            if spoken and preset["provider"] == "Amazon Polly":
+                if preset["voice"] not in (VOICES["polly"].get(preset["language"]) or []):
+                    raise ValueError("Choose a Polly voice for the phrase language in Soundboard settings.")
+                access = self.config["API"].get("aws_access_key") or _config.AWS_ACCESS_KEY
+                secret = self.config["API"].get("aws_secret_key") or _config.AWS_SECRET_KEY
+                region = self.config["API"].get("aws_region")
+                if not access or not secret:
+                    raise ValueError("Configure AWS credentials, or select an installed local voice in Soundboard settings.")
+                provider = LazySpeech(lambda: Polly(access, secret, region))
+            elif spoken and preset["provider"] == "Windows Speech":
+                local = self.windows_speech or WindowsSpeech()
+                if preset["voice"] not in local.voices:
+                    raise ValueError("Select an installed Windows desktop voice in Soundboard settings.")
+                provider = local
+            elif spoken:
+                model = speech.get("piper_model_" + preset["language"]) or speech.get("piper_model")
+                if not model or Path(model).stem != preset["voice"]:
+                    raise ValueError("Configure a matching Piper model for this language, then select it in Soundboard settings.")
+                provider = LazySpeech(lambda: PiperSpeech(model, speech.get("piper_executable", "")))
+        except ValueError as error:
+            self.log_warning(str(error))
+            return
+        except Exception:
+            record_failure("Prepare soundboard voice", *sys.exc_info()[::2])
+            self.log_error("Could not prepare the soundboard voice. See diagnostic logs.")
+            return
+        if self.pending_draft:
+            self.edit_pending_message(focus=False)
+        return self._start_output(preset["text"], preset["output"] != "Voice only",
+                                  already_translated=True, apply_ending=False,
+                                  output_override=(speech, provider))
+
     def _check_selected_speech_provider(self):
         if not self.config["SPEECH"].getboolean("enabled"):
             self.speech_provider = None
@@ -1154,10 +1218,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         input_devices = {item["name"]: item["index"] for item in self.input_devices}
         return input_devices.get(input_device_name)
 
-    def _voice_activity(self, activity: bool):
+    def _voice_activity(self, activity: bool, chatbox=None):
         chatbox_enabled = self.config["CHATBOX"].getboolean("enabled")
         self.progressbar.setMaximum(0 if activity else 100)
-        if chatbox_enabled or not activity:
+        if chatbox is not False and (chatbox_enabled or chatbox is True or not activity):
             try:
                 self.osc_client.send_message("/chatbox/typing", bool(activity))
             except OSError:
@@ -1447,10 +1511,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.editor_dirty = True
         self.pending_draft = False
         self.draft_status.setText("Stopped. Draft retained; send it manually or clear the editor to resume recognition.")
-        self._voice_activity(False)
+        self._voice_activity(False, self.output_chatbox_active)
         self.log_info("Output cancelled. Any in-flight cloud request will be discarded when it returns.")
 
-    def _start_output(self, text, send_chatbox, manual=False, already_translated=False, apply_ending=True):
+    def _start_output(self, text, send_chatbox, manual=False, already_translated=False, apply_ending=True, output_override=None):
         if self._closing or self.output_busy:
             return
         if not text.strip():
@@ -1464,37 +1528,46 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                        or self.config["SPEECH"].get("voice") == "None"):
             self.log_error("Enable Speech and configure a working speech provider first.")
             return
-        if self.speech_provider and self.config["SPEECH"].getboolean("enabled"):
+        provider, translator = self.speech_provider, self.translator
+        speech_options = dict(self.config["SPEECH"])
+        if output_override is not None:
+            speech_options, provider = output_override
+            translator = None
+        if provider and (output_override is not None or self.config["SPEECH"].getboolean("enabled")):
             selected = self.config["SPEECH"].get("output_device")
             if not selected or selected not in [d["name"] for d in self.output_devices]:
                 self.log_warning("Select or reconnect the output device, then send again. No audio was rerouted.")
                 self.refresh_devices()
                 return
         config = {section: dict(self.config[section]) for section in ("SPEECH", "TRANSLATOR", "CHATBOX")}
-        provider, translator = self.speech_provider, self.translator
+        config["SPEECH"] = dict(speech_options)
         tags, corrections = dict(self.extra_tags), dict(self.corrections)
         pronunciations = dict(self.pronunciations)
         ending_text = self.config["ENDING"].get("text")
         ending_frequency = self.config["ENDING"].getint("frequency") if apply_ending else 0
         roleplay = dict(self.config["ROLEPLAY"])
+        if output_override is not None:
+            tags, corrections, pronunciations = {}, {}, {}
+            roleplay = {"delivery": "Normal"}
         delivery = roleplay.get("delivery", "Normal")
         if delivery == "Confidential whisper" and self.config["SPEECH"].get("provider") != "Amazon Polly":
             self.log_warning("Confidential whisper requires Polly. Choose Polly or another delivery mode.")
             return
         tags.update(DELIVERIES.get(delivery, {}))
-        if self.config["SPEECH"].get("provider") == "Amazon Polly":
+        if provider and config["SPEECH"].get("provider") == "Amazon Polly":
             try:
                 validate_polly_style(config["SPEECH"]["voice"], tags)
             except UnsupportedSpeechStyle as error:
                 self.log_warning(str(error))
                 return
-        rules = dict(self.chatbox_rules) if self.config["CHATBOX"].getboolean("keyword_additions") else {}
+        rules = dict(self.chatbox_rules) if output_override is None and self.config["CHATBOX"].getboolean("keyword_additions") else {}
         client = CancellableOSC(self.osc_client)
         event = threading.Event()
         self.cancel_output = event
         self.output_busy = True
         self.speak_button.setEnabled(False)
-        self._voice_activity(True)
+        self.output_chatbox_active = send_chatbox if output_override is not None else None
+        self._voice_activity(True, self.output_chatbox_active)
 
         self.history_sequence += 1
         entry = {"id": self.history_sequence, "time": datetime.now().strftime("%H:%M:%S"),
@@ -1558,7 +1631,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def _finish_output(self):
         self.output_busy = False
         self.speak_button.setEnabled(True)
-        self._voice_activity(False)
+        self._voice_activity(False, self.output_chatbox_active)
+        self.output_chatbox_active = None
 
     def edit_nicknames(self):
         self._edit_text_rules("nicknames")

@@ -1,22 +1,24 @@
-VRChat Speech Assistant Deluxe 1.18.0 release candidate 2
+VRChat Speech Assistant Deluxe 1.19.0 release candidate 1
 
-Fix for the reported Windows fatal exception / access violation when starting
-microphone capture while the automatic audio device scan is running.
-
-- Enumerate devices in a separate helper process, avoiding concurrent PortAudio
-  initialization/termination in the capture process.
-- A crashed or hung scanner cannot take down the GUI through shared PortAudio
-  state. Failed scans preserve the previous device list and listener state and
-  retry on the next refresh. Actual disconnect/reconnect handling is retained.
-- Bound helper execution to 30 seconds, suppress helper windows/error dialogs,
-  and record numeric exit codes without device names, transcripts or keys.
-- Regression checks cover the real subprocess boundary, abrupt helper exit,
-  invalid reports, timeout handling and preserving capture after a failed scan.
-  Packaged Windows tests scan twice while the parent holds a PortAudio context.
+New: Roleplay → Soundboard phrases and hotkeys.
+- Up to 32 saved phrases, each with shortcut, language, route, provider and voice.
+- Voice only, Chatbox only, or Voice + chatbox, independent of the main toggles.
+- Default example: Ctrl+; → ぽい (poi), Japanese, Voice only, Polly Mizuki.
+  Uses your AWS keys; select an installed Japanese Windows voice or configured
+  Japanese Piper model for local synthesis instead.
+- Windows punctuation shortcuts, including Ctrl+;, follow the keyboard layout.
+  Shortcut conflicts across Roleplay/Soundboard are rejected; global registration
+  failures are shown. The existing global hotkey switch controls both sets.
+- Add/remove/edit, Play selected preview, persistent settings and session history.
+- Saved phrases bypass translation, substitutions, random endings, personality
+  delivery and chatbox decorations. Main language/voice/editor text are retained.
+- Text-only phrases require no audio or AWS setup. Voice-only sends no chatbox
+  text/typing status. Busy output is not queued; Stop speaking cancels playback.
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64) and replace the old file.
-Existing settings remain in %APPDATA%/VRChat Speech Assistant.
-All previous Deluxe features and the 1.18 upstream catalogue updates remain.
+Existing configuration and the 1.18.0rc2 isolated audio scanner fix are preserved.
 
-The supplied crash shows an overlapping PortAudio lifecycle. The fix removes
-that overlap; the exact user driver/hardware crash still needs user validation.
+Validation: automated route/isolation/persistence/conflict tests, plus native
+Windows shortcut registration (including semicolon), packaged soundboard dialog,
+SAPI synthesis and the existing application smoke tests. No live AWS requests
+were made; Japanese voice quality and VRChat routing need user hardware testing.

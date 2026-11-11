@@ -59,7 +59,7 @@ class RoleplayDialog(QtWidgets.QDialog):
 
     def save(self):
         bindings = {}
-        seen = set()
+        seen = {parse_hotkey(preset['key']) for preset in self.window.soundboard_presets if preset['key']}
         try:
             for row, action in enumerate(ACTIONS):
                 sequence = self.table.cellWidget(row, 1).keySequence().toString(QtGui.QKeySequence.PortableText)

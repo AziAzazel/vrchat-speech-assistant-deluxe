@@ -21,6 +21,36 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Soundboard phrases and hotkeys (1.19)
+
+Open **Roleplay → Soundboard phrases and hotkeys**. Each row has its own shortcut,
+phrase, language, output route, provider and voice. Add up to 32 rows, remove rows,
+or clear a shortcut to disable it. **Play selected** previews the row before saving.
+Duplicate bindings across Soundboard and Roleplay are rejected. Global shortcuts
+work while VRChat is focused when **Global hotkeys** is enabled; registration
+conflicts are reported in the app. Punctuation keys follow the Windows keyboard
+layout, including **Ctrl+;**.
+
+The initial example is **Ctrl+; → ぽい (poi), Japanese, Voice only, Polly Mizuki**.
+Polly requires your configured AWS keys. For offline speech select an installed
+Japanese Windows desktop voice or a configured Japanese Piper model. The language
+field does not install a voice or translate text: enter the phrase in that language.
+Piper uses the model saved for that language, or the current configured model.
+
+- **Voice only**: speech through the selected application output device; no chatbox
+  text or typing status from the phrase.
+- **Chatbox only**: OSC text without synthesis, AWS keys or an audio device.
+- **Voice + chatbox**: speech followed by chatbox output.
+
+Routes explicitly override the main Speech/Chatbox toggles for the saved phrase.
+The main language, voice, microphone state and unsent editor text stay intact.
+An active preview countdown is paused. Phrases use normal delivery, bypass DeepL,
+nickname/pronunciation substitutions, random endings and chatbox decorations, so
+saved text is sent consistently. Spoken output requires the selected audio device;
+there is no automatic cloud fallback. Busy output refuses another phrase rather
+than queueing it. **Stop speaking** also cancels soundboard playback and unsent OSC.
+Settings are saved in config.ini, and attempts appear in the existing session history.
+
 ## Audio crash fix (1.18.0rc2)
 
 Device refresh now runs in a disposable helper process. It cannot initialize or

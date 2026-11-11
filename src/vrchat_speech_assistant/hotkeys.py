@@ -9,7 +9,7 @@ def parse_hotkey(sequence):
     parts = [part.strip().upper() for part in sequence.split("+")]
     modifiers = {"ALT": 1, "CTRL": 2, "SHIFT": 4, "WIN": 8}
     if not parts or any(part not in modifiers for part in parts[:-1]):
-        raise ValueError("Use Ctrl/Alt/Shift/Win plus a letter, digit or F1–F24")
+        raise ValueError("Use Ctrl/Alt/Shift/Win plus a letter, digit, punctuation key or F1–F24")
     flags = 0
     for part in parts[:-1]:
         flags |= modifiers[part]
@@ -18,8 +18,18 @@ def parse_hotkey(sequence):
         code = 111 + int(key[1:])
     elif len(key) == 1 and key.isascii() and key.isalnum() and flags:
         code = ord(key)
+    elif flags and key in {";", "=", ",", "-", ".", "/", "`", "[", "\\", "]", "'"}:
+        code = {";": 0xBA, "=": 0xBB, ",": 0xBC, "-": 0xBD, ".": 0xBE,
+                "/": 0xBF, "`": 0xC0, "[": 0xDB, "\\": 0xDC, "]": 0xDD, "'": 0xDE}[key]
+        if sys.platform == "win32":
+            mapped = ctypes.windll.user32.VkKeyScanW(ord(key))
+            if mapped == -1:
+                raise ValueError("This punctuation key is unavailable in the active keyboard layout")
+            code = mapped & 0xFF
+            shift = (mapped >> 8) & 0xFF
+            flags |= (4 if shift & 1 else 0) | (2 if shift & 2 else 0) | (1 if shift & 4 else 0)
     else:
-        raise ValueError("Use a modified letter/digit or F1–F24")
+        raise ValueError("Use a modified letter/digit/punctuation key or F1–F24")
     return flags, code
 
 

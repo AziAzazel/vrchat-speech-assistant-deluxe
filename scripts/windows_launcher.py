@@ -61,13 +61,16 @@ def smoke_test(report):
     from vrchat_speech_assistant.hotkeys import GlobalHotkeys
     delivered = threading.Event()
     errors = []
-    manager = GlobalHotkeys({"probe": "Ctrl+Alt+Shift+F24"}, lambda action: delivered.set(), errors.append)
+    manager = GlobalHotkeys({"probe": "Ctrl+Alt+Shift+F24", "semicolon": "Ctrl+;"}, lambda action: delivered.set(), errors.append)
     manager.start()
     try:
         assert manager.ready_event.wait(5), "Native hotkey thread did not initialize"
-        assert manager.registered_count == 1, errors
+        assert manager.registered_count == 2, errors
         assert ctypes.windll.user32.PostThreadMessageW(manager.thread_id, 0x0312, 1, 0)
         assert delivered.wait(5), "Background WM_HOTKEY was not dispatched"
+        delivered.clear()
+        assert ctypes.windll.user32.PostThreadMessageW(manager.thread_id, 0x0312, 2, 0)
+        assert delivered.wait(5), "Semicolon WM_HOTKEY was not dispatched"
     finally:
         manager.stop()
     app = QtWidgets.QApplication([])
@@ -112,11 +115,19 @@ def smoke_test(report):
     assert history.table.rowCount() == 1
     assert history.selected()["result"] == "Hello, poi."
     history.close()
+    from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
+    soundboard = SoundboardDialog(window)
+    assert soundboard.table.cellWidget(0, 0).keySequence().toString() == "Ctrl+;"
+    assert soundboard.table.cellWidget(0, 2).currentText() == "Japanese"
+    assert soundboard.table.cellWidget(0, 5).currentText() == "Mizuki"
+    soundboard.save()
+    assert window.soundboard_presets[0]["text"] == "ぽい"
+    assert window.soundboard_presets[0]["output"] == "Voice only"
     window.clear_history()
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed"}), encoding="utf-8")
 
 
 def main():
