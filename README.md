@@ -21,6 +21,15 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Audio crash fix (1.18.0rc2)
+
+Device refresh now runs in a disposable helper process. It cannot initialize or
+terminate PortAudio alongside microphone capture in the application, which could
+cause a native Windows access violation when enabling listening during a scan.
+A failed or timed-out scan preserves the last device list and capture state;
+subsequent scans retry. Successful scans still detect disconnected/reconnected
+devices. Diagnostics record helper exit codes without device names or speech.
+
 ## Selected upstream updates (1.18)
 
 We reviewed the original GitLab project through release 2.3.1 and adapted selected

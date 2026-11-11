@@ -35,6 +35,18 @@ def smoke_test(report):
         raise AssertionError("Neural whisper was not rejected")
     for filename in ("banner.png", "logo.png", "on.wav", "off.wav"):
         assert (RESOURCES_PATH / filename).is_file(), filename
+    from vrchat_speech_assistant.audio_devices import get_device_snapshot
+    import pyaudio
+    # Hold a parent PortAudio context while the packaged helper scans devices.
+    # The helper must have a separate PID and cannot terminate this context.
+    parent_audio = pyaudio.PyAudio()
+    try:
+        for _ in range(2):
+            snapshot = get_device_snapshot()
+            assert snapshot["pid"] != os.getpid()
+            assert parent_audio.get_device_count() >= 0
+    finally:
+        parent_audio.terminate()
     speech = WindowsSpeech()
     assert speech.voices, "No SAPI desktop voices on build runner"
     path = Path(os.environ["APPDATA"]) / "sapi.wav"
@@ -104,10 +116,18 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed"}), encoding="utf-8")
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--audio-device-probe":
+        try:
+            from vrchat_speech_assistant.audio_devices import write_device_probe
+            write_device_probe(sys.argv[2])
+            return 0
+        except Exception:
+            # Windowed PyInstaller must not show an unhandled-error dialog.
+            return 2
     if len(sys.argv) == 3 and sys.argv[1] == "--smoke-test":
         smoke_test(sys.argv[2])
         return 0

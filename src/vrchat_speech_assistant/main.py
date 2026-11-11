@@ -18,7 +18,7 @@ from threading import Thread
 
 import speech_recognition
 from chatbox_osc import FONTS, write_chatbox
-from vrchat_speech_assistant.audio_devices import get_devices
+from vrchat_speech_assistant.audio_devices import get_device_snapshot
 from vrchat_speech_assistant.listener import BackgroundListener
 from vrchat_speech_assistant.output_control import output_scope, check_cancelled, OutputCancelled, CancellableOSC
 from PySide6 import QtGui, QtWidgets
@@ -209,8 +209,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.osc_server = BlockingOSCUDPServer(("127.0.0.1", 7001), dispatcher)
         self.listener = None
         self.is_listener_running = False
-        self.input_devices = self._detect_devices("input")
-        self.output_devices = self._detect_devices("output")
+        inputs, outputs = self._detect_device_snapshot()
+        self.input_devices, self.output_devices = inputs or [], outputs or []
         self.config = configparser.ConfigParser(allow_no_value=True, interpolation=None)
         self._init_config()
         self._init_ui()
@@ -227,13 +227,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.setWindowState(self.windowState() | Qt.WindowMaximized)
 
     @staticmethod
-    def _detect_devices(kind):
+    def _detect_device_snapshot():
         try:
-            return get_devices(device_type=kind)
+            snapshot = get_device_snapshot()
+            return snapshot["inputs"], snapshot["outputs"]
         except Exception:
-            # A headless runner or disconnected audio API can expose no devices.
-            record_failure("Enumerate " + kind + " devices", *sys.exc_info()[::2])
-            return []
+            record_failure("Audio device probe", *sys.exc_info()[::2])
+            return None, None
 
     def _init_config(self):
         self._load_base_config()
@@ -1199,12 +1199,15 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             return
         self.device_scan_busy = True
         def scan():
-            self.devices_signal.emit(self._detect_devices("input"), self._detect_devices("output"))
+            self.devices_signal.emit(*self._detect_device_snapshot())
         Thread(target=scan, name="audio-device-refresh", daemon=True).start()
 
     def _apply_devices(self, inputs, outputs):
         self.device_scan_busy = False
         if self._closing:
+            return
+        if inputs is None or outputs is None:
+            self.log_warning("Audio device scan failed; keeping the last device list and retrying. See diagnostic logs.")
             return
         old_index = self._get_input_device_index(self.config["APP"].get("input_device"))
         self.input_devices, self.output_devices = inputs, outputs

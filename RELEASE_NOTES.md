@@ -1,25 +1,22 @@
-VRChat Speech Assistant Deluxe 1.18.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.18.0 release candidate 2
 
-Download VRChatSpeechAssistantDeluxe.exe (Windows x64). Existing settings remain
-in %APPDATA%/VRChat Speech Assistant.
+Fix for the reported Windows fatal exception / access violation when starting
+microphone capture while the automatic audio device scan is running.
 
-Selected changes adapted from the original Amelien Deshams (Nekosan) project:
-- Expanded catalogues: 86 recognition languages, 111 DeepL languages and 100
-  distinct Polly voice IDs. Additional DeepL languages request the beta flag
-  and quality-optimized model; actual availability depends on DeepL.
-- Correct engine selection for newly added Neural voices, including Polish Ola.
-  Neural uses supported SSML; incompatible whisper/pitch settings produce an
-  actionable message before synthesis. Standard voices retain their effects,
-  labels, saved selections and cache behavior.
-- Duration diagnostics for recognition, translation, synthesis/playback and OSC,
-  without adding transcripts or credentials to logs.
-- UPSTREAM_REVIEW.md documents the exact baseline, selected commits and deferred
-  experiments. No old upstream history or shared credentials were merged.
+- Enumerate devices in a separate helper process, avoiding concurrent PortAudio
+  initialization/termination in the capture process.
+- A crashed or hung scanner cannot take down the GUI through shared PortAudio
+  state. Failed scans preserve the previous device list and listener state and
+  retry on the next refresh. Actual disconnect/reconnect handling is retained.
+- Bound helper execution to 30 seconds, suppress helper windows/error dialogs,
+  and record numeric exit codes without device names, transcripts or keys.
+- Regression checks cover the real subprocess boundary, abrupt helper exit,
+  invalid reports, timeout handling and preserving capture after a failed scan.
+  Packaged Windows tests scan twice while the parent holds a PortAudio context.
 
-All previous Deluxe controls remain available. Offline Whisper recognition and
-GGWave are separate upstream experiments and are not included in this release.
+Download VRChatSpeechAssistantDeluxe.exe (Windows x64) and replace the old file.
+Existing settings remain in %APPDATA%/VRChat Speech Assistant.
+All previous Deluxe features and the 1.18 upstream catalogue updates remain.
 
-Validation includes regression tests and a packaged Windows smoke test covering
-native hotkeys, SAPI generation, GUI, saved settings and the Neural style guard.
-Live AWS/DeepL calls and audio/VRChat routing require user testing. The executable
-is unsigned.
+The supplied crash shows an overlapping PortAudio lifecycle. The fix removes
+that overlap; the exact user driver/hardware crash still needs user validation.

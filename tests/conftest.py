@@ -47,5 +47,5 @@ def gui(tmp_path_factory):
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     main = importlib.import_module("vrchat_speech_assistant.main")
-    main.get_devices = lambda **kwargs: [{"name": "Test device", "index": 0}]
+    main.get_device_snapshot = lambda: {"inputs": [{"name": "Test device", "index": 0}], "outputs": [{"name": "Test device", "index": 0}]}
     return app, main

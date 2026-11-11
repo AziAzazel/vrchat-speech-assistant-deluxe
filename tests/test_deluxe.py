@@ -21,6 +21,9 @@ def window(gui, monkeypatch):
     window.ending_frequency.setValue(0)
     window.speech_provider = Mock()
     yield window
+    # A draft left by a test must not auto-send while the fixture is closing.
+    window.preview_timer.stop()
+    window.countdown_timer.stop()
     wait_output(app, window)
     window.close()
     app.processEvents()
@@ -286,8 +289,8 @@ def test_polly_delivery_rate_ssml(gui, tmp_path, monkeypatch):
 
 def test_missing_audio_api_does_not_prevent_startup(gui, monkeypatch):
     app, main = gui
-    monkeypatch.setattr(main, "get_devices", Mock(side_effect=AttributeError("No WASAPI device")))
-    assert main.VRCSpeechAssistantWindow._detect_devices("output") == []
+    monkeypatch.setattr(main, "get_device_snapshot", Mock(side_effect=RuntimeError("probe failed")))
+    assert main.VRCSpeechAssistantWindow._detect_device_snapshot() == (None, None)
 
 
 def test_preview_countdown_auto_send(gui, window):
@@ -681,3 +684,17 @@ def test_neural_voice_keeps_pitch_setting_and_explains_invalid_style(gui, window
     assert 'Standard voice' in window.log_line_edit.text()
     assert window.config['SPEECH']['pitch'] == '-20'
     window.speech_pitch_slider.setValue(0)
+
+
+def test_failed_scan_preserves_devices_listener_and_allows_retry(gui, window, monkeypatch):
+    app, main = gui
+    window.device_scan_busy = True
+    window.is_listener_running = True
+    before = window.input_devices, window.output_devices
+    stop = Mock()
+    monkeypatch.setattr(window, 'stop_listener', stop)
+    window._apply_devices(None, None)
+    assert (window.input_devices, window.output_devices) == before
+    assert window.is_listener_running and not window.device_scan_busy
+    stop.assert_not_called()
+    assert 'keeping the last device list' in window.log_line_edit.text()
