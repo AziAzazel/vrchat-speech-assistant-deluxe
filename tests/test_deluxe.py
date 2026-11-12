@@ -780,3 +780,67 @@ def test_soundboard_hotkey_dispatch_uses_saved_row(gui, window, monkeypatch):
     monkeypatch.setattr(window, 'play_soundboard', play)
     window.roleplay_action('soundboard_0')
     play.assert_called_once_with(window.soundboard_presets[0])
+
+
+@pytest.mark.parametrize('dialog_name', ['RoleplayDialog', 'SoundboardDialog'])
+def test_record_shortcuts_while_own_bindings_are_suspended(gui, window, monkeypatch, dialog_name):
+    from PySide6.QtTest import QTest
+    from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
+    from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
+    app, main = gui
+    window.config['ROLEPLAY']['global_hotkeys'] = 'False'
+    window._init_hotkeys()
+    dialog = {'RoleplayDialog': RoleplayDialog, 'SoundboardDialog': SoundboardDialog}[dialog_name](window)
+    action = Mock()
+    monkeypatch.setattr(window, 'play_soundboard', action)
+    dialog.show()
+    app.processEvents()
+    assert window._hotkey_edit_depth == 1 and not window.shortcuts and window.global_hotkeys is None
+    editor = dialog.table.cellWidget(0, 1 if dialog_name == 'RoleplayDialog' else 0)
+    editor.setFocus()
+    QTest.keyClick(editor, main.Qt.Key_Semicolon, main.Qt.ControlModifier)
+    assert editor.keySequence().toString() == 'Ctrl+;'
+    action.assert_not_called()
+    QTest.keyClick(editor, main.Qt.Key_Backspace)
+    assert editor.keySequence().isEmpty()
+    dialog.reject()
+    app.processEvents()
+    assert window._hotkey_edit_depth == 0 and window.shortcuts
+
+
+def test_recording_entry_preserves_paths_and_routes_no_cloud(gui, window, monkeypatch, tmp_path):
+    from vrchat_speech_assistant.recording_dialog import RecordingDialog
+    from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
+    app, main = gui
+    audio = tmp_path/'song.wav'
+    audio.write_bytes(b'placeholder')
+    srt = tmp_path/'song.srt'
+    srt.write_text('1\n00:00:00,000 --> 00:00:02,000\nポイ', encoding='utf-8')
+    dialog = SoundboardDialog(window)
+    recording = RecordingDialog(dialog)
+    recording.audio.setText(str(audio))
+    recording.subtitle.setText(str(srt))
+    recording.offset.setValue(300)
+    recording.output.setCurrentText('Voice + chatbox')
+    recording.save()
+    assert recording.result_preset['offset_ms'] == 300
+    dialog.add_row(recording.result_preset)
+    preset = dialog.preset(dialog.table.rowCount()-1)
+    assert preset['audio'] == str(audio) and preset['subtitle'] == str(srt)
+    assert preset['kind'] == 'audio'
+    cloud, start = Mock(), Mock(return_value=True)
+    monkeypatch.setattr(main, 'Polly', cloud)
+    monkeypatch.setattr(window, '_start_output', start)
+    assert window.play_soundboard(preset)
+    cloud.assert_not_called()
+    assert start.call_args.kwargs['requires_audio']
+    assert start.call_args.args[1] is False  # Subtitles are scheduled by the media backend.
+    dialog.reject()
+
+
+def test_text_only_output_survives_audio_device_disconnect(gui, window):
+    window.output_busy = True
+    window.output_requires_audio = False
+    window._apply_devices([], [])
+    assert not window.cancel_output.is_set()
+    window.output_busy = False

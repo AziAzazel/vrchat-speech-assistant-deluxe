@@ -1,11 +1,12 @@
 """Roleplay controls and editable announcement shortcuts."""
 from PySide6 import QtWidgets, QtGui
+from vrchat_speech_assistant.shortcut_editor import ShortcutEdit, HotkeySettingsDialog
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS
 from vrchat_speech_assistant.hotkeys import parse_hotkey
 from vrchat_speech_assistant.languages import GOOGLE, DEEPL
 
 
-class RoleplayDialog(QtWidgets.QDialog):
+class RoleplayDialog(HotkeySettingsDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Personality, delivery and hotkeys")
@@ -45,7 +46,7 @@ class RoleplayDialog(QtWidgets.QDialog):
         self.table.setHorizontalHeaderLabels(["Action", "Hotkey", "Custom announcement (blank = personality default)"])
         for row, action in enumerate(ACTIONS):
             self.table.setCellWidget(row, 0, QtWidgets.QLabel(action.replace("_", " ")))
-            key = QtWidgets.QKeySequenceEdit(QtGui.QKeySequence(settings.get("key_" + action, DEFAULT_HOTKEYS[action])))
+            key = ShortcutEdit(QtGui.QKeySequence(settings.get("key_" + action, DEFAULT_HOTKEYS[action])))
             self.table.setCellWidget(row, 1, key)
             phrase = QtWidgets.QLineEdit(settings.get("phrase_" + action, ""))
             phrase.setEnabled(action in ACTIONS[:4])

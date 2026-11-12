@@ -58,6 +58,34 @@ def smoke_test(report):
         speech.render("Asynchronous speech verification.", next(iter(speech.voices)), path, rate=85)
     with wave.open(str(path)) as audio:
         assert audio.getnframes() > 0
+    from vrchat_speech_assistant.media_playback import MediaSpeech
+    media_wav = Path(os.environ["APPDATA"]) / "media.wav"
+    with wave.open(str(media_wav), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(22050)
+        audio.writeframes(b"\0\0" * 5512)
+    subtitles = media_wav.with_suffix(".srt")
+    subtitles.write_text("1\n00:00:00,000 --> 00:00:10,000\nTest ポイ\n", encoding="utf-8")
+    class CaptionProbe:
+        def __init__(self):
+            self.messages = []
+        def send_message(self, address, arguments):
+            self.messages.append((address, arguments))
+    previous_driver = os.environ.get("SDL_AUDIODRIVER")
+    os.environ["SDL_AUDIODRIVER"] = "dummy"
+    try:
+        for recording in (media_wav, RESOURCES_PATH / "playback-smoke.mp3"):
+            probe = CaptionProbe()
+            with output_scope(threading.Event()):
+                MediaSpeech(recording, str(subtitles), client=probe).speech("", "", None)
+            assert any(args[0] == "Test ポイ" for _, args in probe.messages), "No timed subtitle"
+            assert probe.messages[-1][1][0] == "", "Subtitle was not cleared"
+    finally:
+        if previous_driver is None:
+            os.environ.pop("SDL_AUDIODRIVER", None)
+        else:
+            os.environ["SDL_AUDIODRIVER"] = previous_driver
     from vrchat_speech_assistant.hotkeys import GlobalHotkeys
     delivered = threading.Event()
     errors = []
@@ -117,17 +145,28 @@ def smoke_test(report):
     history.close()
     from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
     soundboard = SoundboardDialog(window)
+    soundboard.show()
+    app.processEvents()
+    assert window.global_hotkeys is None and window._hotkey_edit_depth == 1
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import Qt
+    editor = soundboard.table.cellWidget(0, 0)
+    editor.setFocus()
+    QTest.keyClick(editor, Qt.Key_Semicolon, Qt.ControlModifier)
+    assert editor.keySequence().toString() == "Ctrl+;"
     assert soundboard.table.cellWidget(0, 0).keySequence().toString() == "Ctrl+;"
     assert soundboard.table.cellWidget(0, 2).currentText() == "Japanese"
     assert soundboard.table.cellWidget(0, 5).currentText() == "Mizuki"
     soundboard.save()
+    assert window._hotkey_edit_depth == 0 and window.global_hotkeys is not None
+    assert window.global_hotkeys.ready_event.wait(5)
     assert window.soundboard_presets[0]["text"] == "ぽい"
     assert window.soundboard_presets[0]["output"] == "Voice only"
     window.clear_history()
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed"}), encoding="utf-8")
 
 
 def main():

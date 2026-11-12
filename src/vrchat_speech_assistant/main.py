@@ -202,6 +202,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.history_entry_signal.connect(self._record_history)
         self.output_busy = False
         self.output_chatbox_active = None
+        self.output_requires_audio = False
         self.windows_speech = None
         self._closing = False
         self.translator = None
@@ -219,6 +220,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._init_translator()
         self._init_server()
         self.global_hotkeys = None
+        self._hotkey_edit_depth = 0
         self.shortcuts = []
         self._init_hotkeys()
         self.device_timer = QTimer(self)
@@ -719,6 +721,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             shortcut.setEnabled(False)
             shortcut.deleteLater()
         self.shortcuts = []
+        if self._hotkey_edit_depth:
+            self.hotkey_state_signal.emit("Shortcuts paused while editing settings")
+            return
         settings = self.config["ROLEPLAY"]
         self.global_shortcuts_checkbox.blockSignals(True)
         self.global_shortcuts_checkbox.setChecked(settings.getboolean("global_hotkeys"))
@@ -754,7 +759,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 self.shortcuts.append(shortcut)
 
     def roleplay_action(self, action):
-        if self._closing:
+        if self._closing or self._hotkey_edit_depth:
             return
         settings = self.config["ROLEPLAY"]
         if action.startswith("soundboard_"):
@@ -1132,6 +1137,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             return
         try:
             validate_presets([preset])
+            if preset.get("kind") == "audio":
+                return self.play_recording(preset)
             speech = dict(self.config["SPEECH"])
             speech.update(provider=preset["provider"], voice=preset["voice"],
                           source_language=preset["language"], target_language=preset["language"])
@@ -1168,6 +1175,24 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         return self._start_output(preset["text"], preset["output"] != "Voice only",
                                   already_translated=True, apply_ending=False,
                                   output_override=(speech, provider))
+
+    def play_recording(self, preset):
+        from vrchat_speech_assistant.media_playback import MediaSpeech, load_srt
+        audio = Path(preset["audio"])
+        if not audio.is_file():
+            raise ValueError("Recording file is missing. Choose it again in Soundboard settings.")
+        if preset.get("subtitle"):
+            if not Path(preset["subtitle"]).is_file():
+                raise ValueError("SRT file is missing. Choose it again in Soundboard settings.")
+            load_srt(preset["subtitle"])
+        speech = dict(self.config["SPEECH"])
+        speech.update(provider="Audio file", voice=audio.name, target_language=preset["language"])
+        backend = MediaSpeech(str(audio), preset.get("subtitle", ""), preset.get("offset_ms", 0),
+                              preset["output"], self.osc_client)
+        if self.pending_draft:
+            self.edit_pending_message(focus=False)
+        return self._start_output(preset["text"], False, already_translated=True, apply_ending=False,
+                                  output_override=(speech, backend), requires_audio=backend.play_audio)
 
     def _check_selected_speech_provider(self):
         if not self.config["SPEECH"].getboolean("enabled"):
@@ -1300,7 +1325,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._update_activate_button()
         chosen_output = self.config["SPEECH"].get("output_device")
         if chosen_output and chosen_output not in [d["name"] for d in outputs]:
-            if self.output_busy:
+            if self.output_busy and self.output_requires_audio:
                 self.cancel_output.set()
             self.log_warning("Selected output is disconnected. Reconnect it or select another device; no audio was rerouted.")
 
@@ -1514,7 +1539,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._voice_activity(False, self.output_chatbox_active)
         self.log_info("Output cancelled. Any in-flight cloud request will be discarded when it returns.")
 
-    def _start_output(self, text, send_chatbox, manual=False, already_translated=False, apply_ending=True, output_override=None):
+    def _start_output(self, text, send_chatbox, manual=False, already_translated=False, apply_ending=True, output_override=None, requires_audio=True):
         if self._closing or self.output_busy:
             return
         if not text.strip():
@@ -1533,7 +1558,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if output_override is not None:
             speech_options, provider = output_override
             translator = None
-        if provider and (output_override is not None or self.config["SPEECH"].getboolean("enabled")):
+        if requires_audio and provider and (output_override is not None or self.config["SPEECH"].getboolean("enabled")):
             selected = self.config["SPEECH"].get("output_device")
             if not selected or selected not in [d["name"] for d in self.output_devices]:
                 self.log_warning("Select or reconnect the output device, then send again. No audio was rerouted.")
@@ -1565,6 +1590,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         event = threading.Event()
         self.cancel_output = event
         self.output_busy = True
+        self.output_requires_audio = bool(provider and requires_audio)
         self.speak_button.setEnabled(False)
         self.output_chatbox_active = send_chatbox if output_override is not None else None
         self._voice_activity(True, self.output_chatbox_active)
@@ -1630,6 +1656,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def _finish_output(self):
         self.output_busy = False
+        self.output_requires_audio = False
         self.speak_button.setEnabled(True)
         self._voice_activity(False, self.output_chatbox_active)
         self.output_chatbox_active = None

@@ -21,6 +21,38 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## WAV / MP3 recordings, SRT subtitles and shortcut recording (1.20)
+
+Open **Roleplay → Soundboard phrases and hotkeys → Add recording**. Choose a
+WAV/MP3 file and, optionally, its SRT. A same-name `.srt` beside a recording is
+suggested automatically. Set a shortcut, output route and subtitle offset:
+**+300 ms delays** subtitles; negative values advance them. Save the recording,
+then save the Soundboard list. **Files / SRT…** edits an existing recording.
+Files remain on your computer; configuration stores paths, not copies. Moving a
+file requires selecting it again. No AWS, DeepL or synthesis is used for playback.
+
+For recordings, **Voice only** plays audio, **Voice + chatbox** adds timed captions,
+and **Chatbox only** runs the subtitle timeline silently without an audio device.
+Audio uses the application's chosen output device. Captions use audio playback
+position, not the text animation setting. SRT supports UTF-8/BOM, UTF-16/BOM and
+Windows Central European encoding, multiline cues and common formatting tags.
+Overlapping cues share a message. Lines are limited to 144 characters and updates
+to one per 1.5 seconds: rapid obsolete cues are skipped instead of queued. This is
+line synchronization, not word highlighting. Captions beyond the recording's end
+are cut off; chatbox timing also depends on VRChat and audio-routing latency.
+
+**Stop speaking** cancels playback and future captions, and attempts to clear the
+last caption. Soundboard settings also have a **Stop** button for previews.
+Normal speech and recordings share the existing single-output busy/cancel flow.
+
+Shortcut fields now record one chord immediately, including `Ctrl+;`.
+Click a field and press the keys; Backspace/Delete clears it. The application's
+Windows registrations and Qt shortcuts are suspended while shortcut settings are
+open, including nested recording settings, and restored after Save, Cancel or
+closing the dialog. This prevents existing bindings from swallowing recorded keys
+or accidentally playing a phrase. Other applications can still reserve a key;
+registration conflicts remain visible after settings close.
+
 ## Soundboard phrases and hotkeys (1.19)
 
 Open **Roleplay → Soundboard phrases and hotkeys**. Each row has its own shortcut,

@@ -7,7 +7,7 @@ import threading
 
 def parse_hotkey(sequence):
     parts = [part.strip().upper() for part in sequence.split("+")]
-    modifiers = {"ALT": 1, "CTRL": 2, "SHIFT": 4, "WIN": 8}
+    modifiers = {"ALT": 1, "CTRL": 2, "SHIFT": 4, "WIN": 8, "META": 8}
     if not parts or any(part not in modifiers for part in parts[:-1]):
         raise ValueError("Use Ctrl/Alt/Shift/Win plus a letter, digit, punctuation key or F1–F24")
     flags = 0

@@ -1,4 +1,5 @@
 """Saved phrases have explicit routes and never depend on translation."""
+from pathlib import Path
 from vrchat_speech_assistant.hotkeys import parse_hotkey
 from vrchat_speech_assistant.languages import DEEPL
 
@@ -17,14 +18,26 @@ def validate_presets(presets, other_keys=()):
             raise ValueError('Invalid soundboard phrase.')
         if not preset['text'].strip() or len(preset['text']) > 2500:
             raise ValueError('Each phrase needs 1–2500 characters.')
-        if preset['language'] not in DEEPL or preset['output'] not in OUTPUTS or preset['provider'] not in PROVIDERS:
+        recording = preset.get('kind', 'phrase') == 'audio'
+        if preset.get('kind', 'phrase') not in ('phrase', 'audio'):
+            raise ValueError('Unknown soundboard entry type.')
+        if recording:
+            if not isinstance(preset.get('audio'), str) or Path(preset['audio']).suffix.lower() not in ('.wav', '.mp3'):
+                raise ValueError('Select a WAV or MP3 recording.')
+            if not isinstance(preset.get('subtitle', ''), str) or (preset.get('subtitle') and Path(preset['subtitle']).suffix.lower() != '.srt'):
+                raise ValueError('Select an SRT subtitle file, or leave it empty.')
+            if type(preset.get('offset_ms', 0)) is not int or not -10000 <= preset.get('offset_ms', 0) <= 10000:
+                raise ValueError('Subtitle offset must be between -10000 and 10000 ms.')
+            if preset['output'] == 'Chatbox only' and not preset.get('subtitle'):
+                raise ValueError('Subtitle-only playback requires an SRT file.')
+        if preset['language'] not in DEEPL or preset['output'] not in OUTPUTS or (not recording and preset['provider'] not in PROVIDERS):
             raise ValueError('Choose a supported language, output and provider.')
         if preset['key']:
             canonical = parse_hotkey(preset['key'])
             if canonical in seen:
                 raise ValueError('Soundboard and Roleplay shortcuts must be different.')
             seen.add(canonical)
-        if preset['output'] != 'Chatbox only' and not preset['voice'].strip():
+        if not recording and preset['output'] != 'Chatbox only' and not preset['voice'].strip():
             raise ValueError('Choose a voice for every spoken phrase.')
     return presets
 
