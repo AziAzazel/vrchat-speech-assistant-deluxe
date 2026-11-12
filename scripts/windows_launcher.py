@@ -97,6 +97,36 @@ def smoke_test(report):
             os.environ.pop("SDL_AUDIODRIVER", None)
         else:
             os.environ["SDL_AUDIODRIVER"] = previous_driver
+    from vrchat_speech_assistant.live_chatbox import LiveChatbox
+    from vrchat_speech_assistant.output_control import playback_scope
+    from vrchat_speech_assistant.providers import read_ogg_file
+    caption_wav = Path(os.environ["APPDATA"]) / "caption-clock.wav"
+    with wave.open(str(caption_wav), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(22050)
+        audio.writeframes(b"\0\0" * 66150)
+    os.environ["SDL_AUDIODRIVER"] = "dummy"
+    try:
+        for recording in (caption_wav, RESOURCES_PATH / "chatbox-smoke.ogg"):
+            import pygame.mixer
+            pages_sent = []
+            def show_caption(text):
+                if pages_sent:
+                    assert pygame.mixer.music.get_busy(), "Next page arrived after audio ended"
+                pages_sent.append(text)
+            captions = LiveChatbox("Visible page test " * 16, show_caption)
+            assert len(captions.pages) == 2
+            captions.start()
+            assert len(pages_sent) == 1  # Before audio starts.
+            with output_scope(threading.Event()), playback_scope(captions.progress):
+                read_ogg_file(str(recording), None)
+            assert pages_sent == captions.pages
+    finally:
+        if previous_driver is None:
+            os.environ.pop("SDL_AUDIODRIVER", None)
+        else:
+            os.environ["SDL_AUDIODRIVER"] = previous_driver
     from vrchat_speech_assistant.hotkeys import GlobalHotkeys
     delivered = threading.Event()
     errors = []
@@ -218,7 +248,7 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed"}), encoding="utf-8")
 
 
 def main():

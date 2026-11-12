@@ -337,7 +337,7 @@ def test_stop_cancels_preview_and_late_recognition(gui, window):
     window.speech_provider.speech.assert_not_called()
 
 
-def test_stop_during_speech_prevents_chatbox_and_next_output_works(gui, window, monkeypatch):
+def test_stop_during_speech_keeps_first_caption_and_next_output_works(gui, window, monkeypatch):
     import threading
     from vrchat_speech_assistant.output_control import check_cancelled
     app, main = gui
@@ -356,7 +356,8 @@ def test_stop_during_speech_prevents_chatbox_and_next_output_works(gui, window, 
     assert entered.wait(1)
     window.roleplay_action("stop_speaking")
     wait_output(app, window)
-    chatbox.assert_not_called()
+    chatbox.assert_called_once()
+    assert chatbox.call_args.args[1] == "long message"
     window.speech_provider.speech.side_effect = None
     window.manual_text.setPlainText("new message")
     window.speak_manual_text()
@@ -890,3 +891,62 @@ def test_osc_dispatcher_belongs_to_window_and_does_not_keep_old_callbacks(gui, w
         assert len(list(other.dispatcher.handlers_for_address('/pitch'))) == 1
     finally:
         other.close()
+
+
+def test_caption_arrives_before_speech_finishes_and_animation_is_bypassed(gui, window, monkeypatch):
+    import threading
+    app, main = gui
+    entered, release = threading.Event(), threading.Event()
+    window.config['SPEECH'].update(enabled='True', provider='Windows Speech', voice='Test voice')
+    window.config['ROLEPLAY'].update(delivery='Normal', chatbox_tag='False')
+    window.config['CHATBOX']['font'] = 'Normal'
+    order = []
+    monkeypatch.setattr(main, 'write_chatbox', lambda *args, **kwargs: order.append(('text', args[1], kwargs)))
+    def speak(*args):
+        order.append(('audio', args[0]))
+        entered.set()
+        release.wait(2)
+    window.speech_provider.speech.side_effect = speak
+    window.config['CHATBOX']['animation'] = 'True'  # Legacy preference must not delay live pages.
+    window.manual_chatbox.setChecked(True)
+    window.manual_text.setPlainText('Visible immediately')
+    try:
+        window.speak_manual_text()
+        assert entered.wait(1)
+        assert order[0][0:2] == ('text', 'Visible immediately')
+        assert order[0][2]['chunk_length'] == 0
+        assert order[1][0] == 'audio'
+    finally:
+        release.set()
+    wait_output(app, window)
+
+
+def test_long_message_uses_one_synthesis_with_all_pages_during_playback(gui, window, monkeypatch):
+    from vrchat_speech_assistant.output_control import playback_callback
+    from vrchat_speech_assistant.live_chatbox import LiveChatbox
+    app, main = gui
+    clock = [0]
+    sent = []
+    window.config['SPEECH'].update(enabled='True', provider='Windows Speech', voice='Test voice')
+    window.config['ROLEPLAY'].update(delivery='Normal', chatbox_tag='False')
+    window.config['CHATBOX']['font'] = 'Normal'
+    class FastCaptions(LiveChatbox):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs, clock=lambda: clock[0], wait=lambda deadline: clock.__setitem__(0, max(clock[0], deadline)))
+    monkeypatch.setattr(main, 'LiveChatbox', FastCaptions)
+    monkeypatch.setattr(main, 'write_chatbox', lambda client, text, **kwargs: sent.append(text))
+    source = ' '.join(f'word{index}' for index in range(150))
+    def speech(*args):
+        callback = playback_callback()
+        assert sent and callback is not None
+        for position in range(101):
+            clock[0] = position
+            callback(position, 100)
+    window.speech_provider.speech.side_effect = speech
+    window.manual_chatbox.setChecked(True)
+    window.manual_text.setPlainText(source)
+    window.speak_manual_text()
+    wait_output(app, window)
+    window.speech_provider.speech.assert_called_once()
+    assert ' '.join(sent) == source
+    assert all(len(page) <= 144 for page in sent)

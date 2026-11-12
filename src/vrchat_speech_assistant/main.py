@@ -19,7 +19,8 @@ import speech_recognition
 from chatbox_osc import FONTS, write_chatbox
 from vrchat_speech_assistant.audio_devices import get_device_snapshot
 from vrchat_speech_assistant.listener import BackgroundListener
-from vrchat_speech_assistant.output_control import output_scope, check_cancelled, OutputCancelled, CancellableOSC
+from vrchat_speech_assistant.output_control import output_scope, playback_scope, check_cancelled, OutputCancelled, CancellableOSC
+from vrchat_speech_assistant.live_chatbox import LiveChatbox, ChatboxOutputError
 from PySide6 import QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal, QTimer
 from pythonosc.dispatcher import Dispatcher
@@ -121,7 +122,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "enabled": True,
             "show more settings": False,
             "font": "Normal",
-            "animation": True,
+            "animation": False,
             "keyword_additions": False,
         },
     }
@@ -219,6 +220,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.soundboard_presets = validate_presets(json.loads(self.config["SOUNDBOARD"].get("presets", "[]")))
         except (ValueError, TypeError):
             record_failure("Load soundboard presets", *sys.exc_info()[::2])
+        # Instant full pages replace the legacy per-character typing animation.
+        self.config["CHATBOX"]["animation"] = "False"
         self.pronunciations = {}
         try:
             path = DATA_DIR / "pronunciation.json"
@@ -430,8 +433,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.font_combo.setCurrentText(self.config["CHATBOX"].get("font"))
         self.font_combo.currentTextChanged.connect(self._on_font_combo_clicked)
         ######### Chatbox animation widget #########
-        self.chatbox_animation = QtWidgets.QCheckBox("Chatbox writing animation")
-        self.chatbox_animation.setChecked(self.config["CHATBOX"].getboolean("animation"))
+        self.chatbox_animation = QtWidgets.QCheckBox("Typing animation (disabled for live captions)")
+        self.chatbox_animation.setChecked(False)
+        self.chatbox_animation.setEnabled(False)
+        self.chatbox_animation.setToolTip("Live captions always show each page immediately; the legacy typing animation is bypassed.")
         self.chatbox_animation.stateChanged.connect(self._on_chatbox_animation_clicked)
         ######### Add widgets to chatbox groupbox widget #########
         chatbox_groupbox_layout.addWidget(font_label)
@@ -904,8 +909,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.save_config()
 
     def _on_chatbox_animation_clicked(self, checked: int):
-        self.config["CHATBOX"]["animation"] = "True" if checked == 2 else "False"
+        self.chatbox_animation.blockSignals(True)
+        self.chatbox_animation.setChecked(False)
+        self.chatbox_animation.blockSignals(False)
+        self.config["CHATBOX"]["animation"] = "False"
         self.save_config()
+
 
     def _on_beep_option_clicked(self, checked: int):
         self.config["APP"]["beep"] = "True" if checked == 2 else "False"
@@ -1500,9 +1509,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.edit_pending_message(focus=False)
 
     def stop_speaking(self):
+        self.cancel_output.set()
         if self.youtube_window is not None:
             self.youtube_window.stop()
-        self.cancel_output.set()
         self.recognition_epoch += 1
         self.preview_timer.stop()
         self.countdown_timer.stop()
@@ -1590,11 +1599,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 result = add_random_ending(result, ending_text, ending_frequency)
                 spoken = spoken_delivery(correct_nicknames(result, pronunciations), tags)
                 entry["result"], entry["spoken"] = result, spoken
-                if provider and speech["voice"] != "None":
-                    stage = "Synthesis/audio playback"
-                    with stage_timer("synthesis_and_playback"):
-                        provider.speech(spoken, speech["voice"], speech["output_device"], tags)
-                check_cancelled()
+                captions = None
                 if send_chatbox:
                     stage = "Chatbox output"
                     chatbox_text = decorate_chatbox(result, rules, corrected_source)
@@ -1602,14 +1607,31 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                         tag = PERSONALITIES.get(roleplay.get("personality"), PERSONALITIES["Neutral"])[1]
                         if tag:
                             chatbox_text = tag + " " + chatbox_text
+                    from chatbox_osc.main import text_with_font
+                    chatbox_text = text_with_font(chatbox_text, config["CHATBOX"]["font"])
+                    captions = LiveChatbox(chatbox_text, lambda page: write_chatbox(
+                        client, page, font="Normal", chunk_length=0), spoken_text=spoken)
                     with stage_timer("OSC_delivery"):
-                        write_chatbox(client, chatbox_text, font=config["CHATBOX"]["font"],
-                                      chunk_length=25 if config["CHATBOX"]["animation"].lower() == "true" else 0)
+                        captions.start()  # Show the first page before synthesis/playback.
+                check_cancelled()
+                speaking = bool(provider and speech["voice"] != "None")
+                if speaking:
+                    stage = "Synthesis/audio playback"
+                    with stage_timer("synthesis_and_playback"), playback_scope(captions.progress if captions and len(captions.pages) > 1 else None):
+                        provider.speech(spoken, speech["voice"], speech["output_device"], tags)
+                check_cancelled()
+                if captions:
+                    stage = "Chatbox output"
+                    with stage_timer("OSC_delivery"):
+                        captions.finish(with_speech=speaking)
                 entry["status"] = "completed"
                 logger.info("Output completed; manual=%s; chatbox=%s", manual, send_chatbox)
                 self.status_signal.emit("info", "Output completed.")
             except UnsupportedSpeechStyle as error:
                 self.status_signal.emit("warning", str(error))
+            except ChatboxOutputError:
+                record_failure("Chatbox output", *sys.exc_info()[::2])
+                self.status_signal.emit("error", "Chatbox output failed. See diagnostic logs.")
             except OutputCancelled:
                 entry["status"] = "cancelled"
                 self.status_signal.emit("info", "Speech stopped; unsent chatbox output cancelled.")

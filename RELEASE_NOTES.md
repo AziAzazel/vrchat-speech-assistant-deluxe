@@ -1,25 +1,26 @@
-VRChat Speech Assistant Deluxe 1.22.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.23.0 release candidate 1
 
-Maintenance and performance update; existing settings and features are preserved.
-- Indexed SRT timing: update only at cue boundaries instead of scanning all cues
-  every playback tick. Overlaps, offsets, gaps, rewind and cancellation retained.
-- Atomic settings writes with deduplication and batches for startup/language
-  switching. Pitch/ending sliders persist on release while updating live.
-- Defer boto3/DeepL/pygame imports until needed. Reuse Polly clients and successful
-  credential validation; close unused validation response streams.
-- One PortAudio initialization and device enumeration per isolated probe, plus
-  per-window OSC dispatchers and no polling in closed YouTube panels.
-- Remove unused logger/pyaudio-devices direct dependencies, obsolete private UI
-  methods, generated docs/build output and inactive GitLab release configuration.
-- Smaller Windows package: only Polly models, shared AWS metadata and TLS roots
-  are kept, excluding unused AWS service models. External Piper support stays.
+Fix: chatbox text no longer waits for the whole synthesized utterance to finish.
+- Publish the first complete page before synthesis/playback.
+- Format once and split long text into readable VRChat-sized pages, with UTF-16
+  limits for emoji/styled letters, word boundaries and long-word/CJK handling.
+- Advance pages during audio using playback position/duration; approximate page
+  alignment, not word-level timestamps. No unseen page is silently skipped.
+- Keep one synthesis/audio clip per utterance, preserving voice, pitch, delivery,
+  pronunciation, translations and avoiding extra per-page Polly requests.
+- Text-only pages have reading time; very fast audio can leave remaining pages
+  afterward instead of discarding them. Minimum update interval is 1.5 seconds.
+- Disable the legacy typewriter animation that delayed chatbox output.
+- Stop cancels future pages promptly and leaves already visible text in place.
+  Chatbox errors are reported separately from audio/device failures.
 
-MAINTENANCE_REVIEW.md and scripts/benchmark_runtime.py describe reproducible
-component measurements and limits. They do not claim a whole-app FPS or startup
-speedup. Cloud/network latency and real audio hardware still need user testing.
+Editable preview and its configured countdown remain in effect. Recognition and
+translation must first produce the accepted text; Google still returns completed
+fragments, not live partial word-by-word transcripts. SRT/YouTube are unaffected.
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64) and replace the old file.
-Validation includes regression tests, failed-write recovery, indexed cue timing,
-SDK lazy imports/client reuse, required AWS data files and the packaged Windows
-GUI/SAPI/worker audio/hotkeys/Edge/SRT checks. A real Polly SDK client is created
-with fake explicit credentials without contacting AWS.
+Existing settings remain, with only obsolete typing animation disabled.
+Validation includes ordering before blocked speech, long-message completeness,
+UTF-16 pages, timed updates and cancellation, plus packaged Windows WAV/OGG tests
+that assert the second page is delivered while real audio playback is active.
+VRChat reception and real audio-device latency require user hardware testing.

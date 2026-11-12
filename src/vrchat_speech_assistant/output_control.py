@@ -31,6 +31,20 @@ def check_cancelled():
         raise OutputCancelled()
 
 
+@contextmanager
+def playback_scope(callback):
+    previous = getattr(_state, 'playback', None)
+    _state.playback = callback
+    try:
+        yield
+    finally:
+        _state.playback = previous
+
+
+def playback_callback():
+    return getattr(_state, 'playback', None)
+
+
 class CancellableOSC:
     def __init__(self, client):
         self.client = client

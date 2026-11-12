@@ -7,7 +7,7 @@ import time
 from xml.sax.saxutils import escape
 
 from vrchat_speech_assistant.diagnostics import DATA_DIR
-from vrchat_speech_assistant.output_control import check_cancelled
+from vrchat_speech_assistant.output_control import check_cancelled, playback_callback
 from vrchat_speech_assistant.languages import POLLY_VOICES_ENGINE
 
 VOICES_PATH = DATA_DIR / "voices"
@@ -141,9 +141,27 @@ def read_ogg_file(filepath: str, output_device_name: str):
     pygame.mixer.init()
     try:
         pygame.mixer.music.load(filepath)
+        callback = playback_callback()
+        duration = None
+        if callback is not None:
+            try:
+                import wave
+                with wave.open(str(filepath), 'rb') as audio:
+                    duration = audio.getnframes()/audio.getframerate()
+            except (wave.Error, EOFError, OSError, ZeroDivisionError):
+                try:
+                    sound = pygame.mixer.Sound(filepath)
+                    duration = sound.get_length()
+                    del sound
+                except pygame.error:
+                    pass  # Caption controller falls back to a reading-time estimate.
         pygame.mixer.music.play()
+        if callback is not None:
+            callback(0, duration)
         while pygame.mixer.music.get_busy():
             check_cancelled()
+            if callback is not None:
+                callback(max(0, pygame.mixer.music.get_pos()/1000), duration)
             time.sleep(0.02)
     finally:
         pygame.mixer.quit()

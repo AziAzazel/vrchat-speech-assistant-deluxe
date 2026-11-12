@@ -21,6 +21,33 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Immediate speech captions and readable long messages (1.23)
+
+Chatbox output now starts **before synthesis/playback**, instead of waiting until
+the whole utterance finishes. Long text is formatted once, split into pages that
+fit VRChat's 144 UTF-16-unit limit (including emoji/styled letters), and advanced
+while audio plays. Each page appears in full immediately; the old per-character
+typing animation is disabled for live captions and its legacy setting is migrated
+off. This prevents the old animation delay and rapid replacement by the last page.
+
+Windows Speech, Piper and Polly keep a **single complete synthesis/playback** per
+utterance. Page timing follows audio position and duration, with boundaries
+estimated proportionally from page lengths; this is not word-level alignment.
+WAV duration is read from its header; other supported speech audio uses decoded
+length. Duration lookup is only needed for multi-page captions. If duration is
+unavailable a reading-time estimate is used. No extra Polly speech-mark or
+per-page synthesis requests are added. All pages are retained: very short audio
+or slow frames can leave a readable remainder after playback rather than drop it.
+Text-only messages advance with reading time. Updates respect a minimum 1.5 s
+interval; Stop cancels every future page and leaves already visible text in place.
+
+Recognition/translation and the existing editable-preview countdown still happen
+before an utterance is accepted. To remove the review delay, disable transcript
+preview or reduce its delay in the message section. Google recognition still
+returns completed audio fragments, not interim word-by-word text. The fix removes
+the extra wait for TTS completion, not the recognition service's processing time.
+SRT recordings and YouTube playback keep their separate behavior.
+
 ## Maintenance and performance (1.22)
 
 - Indexed SRT timing avoids scanning every subtitle at each playback tick.
