@@ -162,11 +162,27 @@ def smoke_test(report):
     assert window.global_hotkeys.ready_event.wait(5)
     assert window.soundboard_presets[0]["text"] == "ぽい"
     assert window.soundboard_presets[0]["output"] == "Voice only"
+    from vrchat_speech_assistant.youtube_player import EdgePlayer, find_edge
+    assert find_edge() is not None, "Windows runner has no Microsoft Edge"
+    edge_probe = EdgePlayer(Path(os.environ["APPDATA"]) / "edge-smoke-profile")
+    try:
+        edge_probe._launch("about:blank")  # No network or actual YouTube playback in CI.
+        QTest.qWait(1200)
+        assert edge_probe.is_running, "Owned Edge browser did not remain running"
+    finally:
+        edge_probe.stop()
+    assert not edge_probe.is_running
+    from vrchat_speech_assistant.youtube_dialog import YouTubeDialog
+    youtube_panel = YouTubeDialog(window)
+    assert "Edge" in youtube_panel.windowTitle()
+    assert "Speech device selector does not change Edge" in youtube_panel.routing.text()
+    youtube_panel.close()
+    youtube_panel.timer.stop()
     window.clear_history()
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed"}), encoding="utf-8")
 
 
 def main():

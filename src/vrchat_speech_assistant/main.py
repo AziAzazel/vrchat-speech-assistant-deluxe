@@ -201,6 +201,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.history_sequence = 0
         self.history_entry_signal.connect(self._record_history)
         self.output_busy = False
+        self.youtube_window = None
         self.output_chatbox_active = None
         self.output_requires_audio = False
         self.windows_speech = None
@@ -323,6 +324,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         roleplay_menu = menu_bar.addMenu("Roleplay")
         roleplay_menu.addAction("Personality, delivery and hotkeys", self.edit_roleplay)
         roleplay_menu.addAction("Soundboard phrases and hotkeys", self.edit_soundboard)
+        roleplay_menu.addAction("YouTube player (no captions)", self.open_youtube)
         for action in ACTIONS[:4]:
             roleplay_menu.addAction(action.title(), lambda checked=False, name=action: self.roleplay_action(name))
         more_menu = menu_bar.addMenu("More")
@@ -699,6 +701,15 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def edit_roleplay(self):
         from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
         RoleplayDialog(self).exec()
+
+    def open_youtube(self):
+        from vrchat_speech_assistant.youtube_dialog import YouTubeDialog
+        if self.youtube_window is None:
+            self.youtube_window = YouTubeDialog(self)
+        self.youtube_window.refresh_routing()
+        self.youtube_window.show()
+        self.youtube_window.raise_()
+        self.youtube_window.activateWindow()
 
     def edit_soundboard(self):
         from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
@@ -1528,6 +1539,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.edit_pending_message(focus=False)
 
     def stop_speaking(self):
+        if self.youtube_window is not None:
+            self.youtube_window.stop()
         self.cancel_output.set()
         self.recognition_epoch += 1
         self.preview_timer.stop()
@@ -1773,6 +1786,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._save_window_size()
         self.geometry_timer.stop()
         self._closing = True
+        if self.youtube_window is not None:
+            self.youtube_window.close()
+            self.youtube_window.timer.stop()
         self.preview_timer.stop()
         self.countdown_timer.stop()
         self.device_timer.stop()

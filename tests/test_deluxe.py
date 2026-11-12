@@ -844,3 +844,24 @@ def test_text_only_output_survives_audio_device_disconnect(gui, window):
     window._apply_devices([], [])
     assert not window.cancel_output.is_set()
     window.output_busy = False
+
+
+def test_youtube_panel_stop_and_close_never_send_chatbox_or_synthesize(gui, window, monkeypatch):
+    from vrchat_speech_assistant import youtube_dialog
+    app, main = gui
+    player = Mock(is_running=True)
+    player.start.return_value = 'https://www.youtube.com/watch?v=abcdefghijk'
+    monkeypatch.setattr(youtube_dialog, 'EdgePlayer', Mock(return_value=player))
+    window.osc_client = Mock()
+    window.open_youtube()
+    panel = window.youtube_window
+    panel.url.setText('https://youtu.be/abcdefghijk')
+    panel.play()
+    player.start.assert_called_once_with('https://youtu.be/abcdefghijk')
+    window.osc_client.send_message.assert_not_called()
+    window.speech_provider.speech.assert_not_called()
+    window.stop_speaking()
+    player.stop.assert_called_once()
+    panel.close()
+    assert player.stop.call_count == 2
+    panel.timer.stop()

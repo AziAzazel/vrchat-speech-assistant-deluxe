@@ -21,6 +21,33 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## YouTube player without captions (1.21)
+
+Open **Roleplay → YouTube player (no captions)**, paste a YouTube video link and
+click **Open / replace video**. Deluxe opens a dedicated Microsoft Edge app
+window with the normal YouTube page and controls. Start playback there; pause,
+seek and volume are YouTube controls. Watch/share/Shorts/live video links are
+accepted. Microsoft Edge must already be installed on Windows. No downloader,
+media extraction, ad bypass, YouTube API key or subtitle scraping is used.
+Streaming uses normal browser buffering/cache; it does not export audio files.
+YouTube consent, ads, account requirements and video availability still apply.
+
+**Route the browser separately:** start playback, use **Windows volume mixer**,
+then set **Microsoft Edge** output to your VB-CABLE input (or other VRChat audio
+route). Edge does **not** follow Deluxe's Speech output selector. Windows may
+apply the same Edge audio preference to ordinary Edge windows as well.
+There are no OSC captions or automatic speech/translations from the video.
+
+**Stop YouTube**, the global **Stop speaking** action, closing the player panel,
+or closing Deluxe terminates the owned player. Ordinary Edge windows are not
+closed. This uses a dedicated browser profile in the app's data folder and a
+Windows job that also owns the player's renderer/audio processes. The browser
+profile has its own normal cookies/cache; media is not copied into Soundboard.
+YouTube playback is independent of the local speech/recording busy state and can
+play alongside them; Stop speaking stops both. Use the YouTube controls to pause
+without stopping other output. Linux/source installations show a Windows/Edge
+requirement instead of launching another browser.
+
 ## WAV / MP3 recordings, SRT subtitles and shortcut recording (1.20)
 
 Open **Roleplay → Soundboard phrases and hotkeys → Add recording**. Choose a
