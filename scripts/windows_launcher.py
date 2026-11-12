@@ -162,15 +162,23 @@ def smoke_test(report):
     assert window.global_hotkeys.ready_event.wait(5)
     assert window.soundboard_presets[0]["text"] == "ぽい"
     assert window.soundboard_presets[0]["output"] == "Voice only"
+    def edge_progress(stage):
+        Path(report).write_text(json.dumps({"version": __version__, "stage": stage}), encoding="utf-8")
+    edge_progress("youtube_edge_lookup")
     from vrchat_speech_assistant.youtube_player import EdgePlayer, find_edge
     assert find_edge() is not None, "Windows runner has no Microsoft Edge"
     edge_probe = EdgePlayer(Path(os.environ["APPDATA"]) / "edge-smoke-profile")
     try:
+        edge_progress("youtube_edge_launch")
         edge_probe._launch("about:blank")  # No network or actual YouTube playback in CI.
+        edge_progress("youtube_edge_created")
         QTest.qWait(1200)
+        edge_progress("youtube_edge_check")
         assert edge_probe.is_running, "Owned Edge browser did not remain running"
     finally:
+        edge_progress("youtube_edge_stopping")
         edge_probe.stop()
+    edge_progress("youtube_edge_stopped")
     assert not edge_probe.is_running
     from vrchat_speech_assistant.youtube_dialog import YouTubeDialog
     youtube_panel = YouTubeDialog(window)
@@ -195,8 +203,22 @@ def main():
             # Windowed PyInstaller must not show an unhandled-error dialog.
             return 2
     if len(sys.argv) == 3 and sys.argv[1] == "--smoke-test":
-        smoke_test(sys.argv[2])
-        return 0
+        try:
+            smoke_test(sys.argv[2])
+            return 0
+        except Exception as error:
+            import traceback
+            previous = {}
+            report_path = Path(sys.argv[2])
+            if report_path.is_file():
+                previous = json.loads(report_path.read_text(encoding="utf-8"))
+            frames = [{"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
+                      for frame in traceback.extract_tb(error.__traceback__)]
+            native_code = getattr(error, "winerror", None)
+            previous.update(status="failed", exception_type=type(error).__name__, frames=frames,
+                            native_code=native_code if isinstance(native_code, int) else None)
+            report_path.write_text(json.dumps(previous), encoding="utf-8")
+            return 1
     from PySide6 import QtWidgets
     from vrchat_speech_assistant import darkstyle
     from vrchat_speech_assistant.main import VRCSpeechAssistantWindow
