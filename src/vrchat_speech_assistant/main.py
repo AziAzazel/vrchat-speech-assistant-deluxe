@@ -12,7 +12,6 @@ import contextlib
 import sys
 import webbrowser
 import winsound
-from os import getenv
 from pathlib import Path
 from threading import Thread
 
@@ -27,11 +26,11 @@ from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import BlockingOSCUDPServer
 from pythonosc.udp_client import SimpleUDPClient
 
-from vrchat_speech_assistant import darkstyle, icons
+from vrchat_speech_assistant import darkstyle, icons  # icons registers Qt resources used by the stylesheet.
 from vrchat_speech_assistant.languages import DEEPL, GOOGLE, VOICES, DEEPL_BETA_LANGUAGES
 from vrchat_speech_assistant.translation import translate_message
 from vrchat_speech_assistant.timings import stage_timer
-from vrchat_speech_assistant.providers import Polly, polly_engine, validate_polly_style, UnsupportedSpeechStyle
+from vrchat_speech_assistant.providers import Polly, PollyPool, polly_engine, validate_polly_style, UnsupportedSpeechStyle
 from vrchat_speech_assistant.windows_speech import (
     WindowsSpeech, UnavailableWindowsSpeech, SpeechWithFallback,
 )
@@ -50,58 +49,19 @@ from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS,
 from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
 from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS, validate_presets, LazySpeech
 from vrchat_speech_assistant.responsive_ui import ResponsiveCards, CollapsibleCard
+from vrchat_speech_assistant.settings_store import SettingsStore, batch_settings
 
 CONFIG_FILE = DATA_DIR / "config.ini"
 RESOURCES_PATH = Path(__file__).parent / "resources"
 
 logger = logging.getLogger("deluxe.main")
-dispatcher = Dispatcher()
 
 
 class VRCSpeechAssistantWindow(QtWidgets.QWidget):
-    """The main window of the VRC Speech Assistant application.
+    """Speech, chatbox, Soundboard and playback controls with persistent settings.
 
-    Using the parameters chosen by the user, this application allows you to use a
-    speech to speech, or speech to text, or both, with your chosen provider.
-    You can also use a translator to auto translate your sentence using DeepL.
-
-    Note
-    ----
-        - The recognizer uses Google services, no configuration needed.
-        - Amazon Polly need an API key, but a default one is provided.
-        - DeepL translator need an API key, but a default one is provided.
-
-    Attributes
-    ----------
-    DEFAULT_WIDTH: int
-        The default window width.
-    DEFAULT_HEIGHT: int
-        The default window height.
-    SPEECH_GROUPBOX_HEIGHT: int
-        The speech groupbox widget height size.
-    CHATBOX_GROUPBOX_HEIGHT: int
-        The chatbox groupbox widget height size.
-    CONFIG: dict
-        The default configuration dictionary for the application.
-    speech_provider: object
-        The selected speech provider for the speech engine.
-    extra_tags: dict
-        Optional extra tags to be provided to the speech provider object.
-    osc_client: SimpleUDPClient
-        The OSC client for VRChat on port 9000.
-    osc_server: BlockingOSCUDPServer
-        The OSC server that allows the user to interact with the app trough OSC
-        on port 7001.
-    listener: speech_recognition.Recognizer.listen_in_background
-        The listener object when the listener thread is running.
-    is_listener_running: bool
-        The state of the listener thread.
-    input_devices: list
-        A list of input sounddevice dict.
-    output_devices: list
-        A list of input sounddevice dict.
-    config: configparser.ConfigParser
-        The configuration file parser.
+    Google recognition is online. Windows/Piper synthesis can work locally;
+    DeepL translation and Amazon Polly require the user's configured keys.
     """
 
     status_signal = Signal(str, str)
@@ -118,8 +78,6 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     DEFAULT_WIDTH = 420
     DEFAULT_HEIGHT = 850
-    SPEECH_GROUPBOX_HEIGHT = 390
-    CHATBOX_GROUPBOX_HEIGHT = 140
     CONFIG = {
         "APP": {
             "beep": True,
@@ -208,17 +166,21 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._closing = False
         self.translator = None
         self.speech_provider = None
+        self._polly_pool = PollyPool(lambda *args: Polly(*args))
         self.extra_tags = {}
         self.osc_client = SimpleUDPClient("127.0.0.1", 9000)
-        self.osc_server = BlockingOSCUDPServer(("127.0.0.1", 7001), dispatcher)
+        self.dispatcher = Dispatcher()
+        self.osc_server = BlockingOSCUDPServer(("127.0.0.1", 7001), self.dispatcher)
         self.listener = None
         self.is_listener_running = False
         inputs, outputs = self._detect_device_snapshot()
         self.input_devices, self.output_devices = inputs or [], outputs or []
         self.config = configparser.ConfigParser(allow_no_value=True, interpolation=None)
-        self._init_config()
-        self._init_ui()
-        self._init_translator()
+        self._settings_store = SettingsStore(CONFIG_FILE, self._settings_save_failed)
+        with self._settings_store.batch():
+            self._init_config()
+            self._init_ui()
+            self._init_translator()
         self._init_server()
         self.global_hotkeys = None
         self._hotkey_edit_depth = 0
@@ -425,6 +387,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if saved_pitch:
             self.extra_tags["pitch"] = saved_pitch
         self.speech_pitch_slider.valueChanged.connect(self._on_speech_pitch_value_changed)
+        self.speech_pitch_slider.sliderReleased.connect(self.save_config)
         ######### Speech output widget #########
         output_device_label = QtWidgets.QLabel("Output device:")
         self.output_device_combo = QtWidgets.QComboBox()
@@ -577,6 +540,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.ending_frequency.setRange(0, 100)
         self.ending_frequency.setValue(max(0, min(100, self.config["ENDING"].getint("frequency"))))
         self.ending_frequency.valueChanged.connect(self._ending_settings_changed)
+        self.ending_frequency.sliderReleased.connect(self.save_config)
         self.ending_frequency_label = QtWidgets.QLabel()
         note = QtWidgets.QLabel("Added once after translation, to speech and chatbox. 0% = never; 100% = always.")
         note.setWordWrap(True)
@@ -620,7 +584,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.config["ENDING"]["text"] = self.ending_text.text()
         self.config["ENDING"]["frequency"] = str(self.ending_frequency.value())
         self._update_ending_label()
-        self.save_config()
+        if not self.ending_frequency.isSliderDown():
+            self.save_config()
 
     def _record_history(self, entry):
         self.history.append(dict(entry))
@@ -671,7 +636,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self._disable_target_language_combo()
 
     def _map_command(self, address, callback):
-        dispatcher.map(address, lambda *args: self.command_signal.emit(lambda: callback(*args)))
+        self.dispatcher.map(address, lambda *args: self.command_signal.emit(lambda: callback(*args)))
 
     def _init_server(self):
         def thread_server():
@@ -775,7 +740,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         settings = self.config["ROLEPLAY"]
         if action.startswith("soundboard_"):
             try:
-                preset = self.soundboard_presets[int(action.removeprefix("soundboard_"))]
+                preset = self.soundboard_presets[int(action[len("soundboard_"):])]
             except (ValueError, IndexError):
                 return
             self.play_soundboard(preset)
@@ -848,16 +813,6 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.config["SPEECH"]["enabled"] = "False"
         self.save_config()
 
-    def _on_speech_show_more_options_clicked(self, checked):
-        self.speech_groupbox.setVisible(checked == 2)
-        self.config["SPEECH"]["show more settings"] = str(checked == 2)
-        self.save_config()
-
-    def _on_chatbox_show_more_options_clicked(self, checked):
-        self.chatbox_groupbox.setVisible(checked == 2)
-        self.config["CHATBOX"]["show more settings"] = str(checked == 2)
-        self.save_config()
-
     def _on_speech_provider_combo_clicked(self, current_text: str):
         self.config["SPEECH"]["provider"] = current_text
         self.save_config()
@@ -907,7 +862,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def _on_speech_pitch_value_changed(self, current_value: int):
         self.log_line_edit.setText(f"Voice pitch: {str(current_value)}%")
         self.config["SPEECH"]["pitch"] = str(current_value)
-        self.save_config()
+        if not self.speech_pitch_slider.isSliderDown():
+            self.save_config()
         # Config extra tags
         if current_value != 0:
             self.extra_tags["pitch"] = current_value
@@ -1163,7 +1119,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 region = self.config["API"].get("aws_region")
                 if not access or not secret:
                     raise ValueError("Configure AWS credentials, or select an installed local voice in Soundboard settings.")
-                provider = LazySpeech(lambda: Polly(access, secret, region))
+                provider = LazySpeech(lambda: self._polly_pool.get((access, secret, region)))
             elif spoken and preset["provider"] == "Windows Speech":
                 local = self.windows_speech or WindowsSpeech()
                 if preset["voice"] not in local.voices:
@@ -1192,14 +1148,15 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         audio = Path(preset["audio"])
         if not audio.is_file():
             raise ValueError("Recording file is missing. Choose it again in Soundboard settings.")
+        cues = None
         if preset.get("subtitle"):
             if not Path(preset["subtitle"]).is_file():
                 raise ValueError("SRT file is missing. Choose it again in Soundboard settings.")
-            load_srt(preset["subtitle"])
+            cues = load_srt(preset["subtitle"])
         speech = dict(self.config["SPEECH"])
         speech.update(provider="Audio file", voice=audio.name, target_language=preset["language"])
         backend = MediaSpeech(str(audio), preset.get("subtitle", ""), preset.get("offset_ms", 0),
-                              preset["output"], self.osc_client)
+                              preset["output"], self.osc_client, cues=cues)
         if self.pending_draft:
             self.edit_pending_message(focus=False)
         return self._start_output(preset["text"], False, already_translated=True, apply_ending=False,
@@ -1222,7 +1179,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 def fallback():
                     if not access or not secret:
                         raise RuntimeError("Configure AWS credentials for Polly fallback")
-                    return Polly(access, secret, region)
+                    return self._polly_pool.get((access, secret, region))
                 def notify():
                     record_failure("Local synthesis; trying Polly fallback", *sys.exc_info()[::2])
                     self.status_signal.emit("warning", "Local synthesis failed; using online Polly fallback.")
@@ -1238,8 +1195,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             valid = False
             try:
                 if aws_access_key and aws_secret_key:
-                    self.speech_provider = Polly(aws_access_key, aws_secret_key, region)
-                    valid = self.speech_provider.test()
+                    self.speech_provider = self._polly_pool.get((aws_access_key, aws_secret_key, region), validate=True)
+                    valid = True
             except Exception:
                 record_failure("Validate Polly credentials", *sys.exc_info()[::2])
             if not valid:
@@ -1280,11 +1237,14 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         config_dialog = ConfigDialog(self)
         config_dialog.exec()
 
+    def _settings_save_failed(self, error):
+        record_failure("Save settings", type(error), error.__traceback__)
+        if hasattr(self, "log_line_edit"):
+            self.log_error("Could not save settings. Previous file retained; see diagnostic logs.")
+
     def save_config(self):
-        """Save configuration changes to the configuration file."""
-        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with CONFIG_FILE.open("w", encoding="utf-8") as config_file:
-            self.config.write(config_file)
+        """Persist changed settings atomically; UI batches write their final state."""
+        return self._settings_store.save(self.config)
 
     def toggle_thread(self):
         """Start or stop the listener thread."""
@@ -1352,6 +1312,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.log_warning("Microphone disconnected or failed. Waiting for device recovery.")
         self.refresh_devices()
 
+    @batch_settings
     def switch_language(self):
         first, second = self.config["LANGUAGES"].get("first"), self.config["LANGUAGES"].get("second")
         if first not in GOOGLE or second not in GOOGLE or first not in DEEPL or second not in DEEPL:

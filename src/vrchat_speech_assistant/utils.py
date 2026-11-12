@@ -1,6 +1,8 @@
-from typing import Optional
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
 
-import deepl
+if TYPE_CHECKING:
+    import deepl
 
 
 def test_deepl(api_key: str) -> Optional[deepl.Translator]:
@@ -18,9 +20,10 @@ def test_deepl(api_key: str) -> Optional[deepl.Translator]:
     """
     if not api_key:
         return None
+    import deepl
     try:
         translator = deepl.Translator(api_key)
         translator.get_usage()
         return translator
-    except (deepl.exceptions.AuthorizationException, deepl.exceptions.DeepLException):
+    except deepl.exceptions.DeepLException:
         return None

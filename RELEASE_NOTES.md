@@ -1,24 +1,25 @@
-VRChat Speech Assistant Deluxe 1.21.0 release candidate 4
+VRChat Speech Assistant Deluxe 1.22.0 release candidate 1
 
-New: Roleplay → YouTube player (no captions).
-- Paste a YouTube video link to open the normal YouTube player in a dedicated
-  Microsoft Edge app window. Use YouTube's Play/Pause, seek and volume controls.
-- No downloader, media extraction, exported audio file, ad bypass or OSC captions.
-  This is ordinary browser streaming with normal buffering/cache. Edge must be
-  installed; YouTube consent, ads, sign-in requirements and availability apply.
-- Audio routing is explicit: play the video, open Windows volume mixer and choose
-  the virtual cable as Microsoft Edge output. The Speech device selector does not
-  change Edge output. That Windows setting may also affect other Edge windows.
-- Stop YouTube, Stop speaking, closing the panel or closing Deluxe stops only the
-  owned player job, including its renderer/audio processes. Ordinary Edge windows
-  stay open. The player has a dedicated browser profile/cookies/cache.
-- YouTube can play alongside speech/local recordings; Stop speaking stops both.
-  Pause a video with the normal YouTube controls if other output should continue.
+Maintenance and performance update; existing settings and features are preserved.
+- Indexed SRT timing: update only at cue boundaries instead of scanning all cues
+  every playback tick. Overlaps, offsets, gaps, rewind and cancellation retained.
+- Atomic settings writes with deduplication and batches for startup/language
+  switching. Pitch/ending sliders persist on release while updating live.
+- Defer boto3/DeepL/pygame imports until needed. Reuse Polly clients and successful
+  credential validation; close unused validation response streams.
+- One PortAudio initialization and device enumeration per isolated probe, plus
+  per-window OSC dispatchers and no polling in closed YouTube panels.
+- Remove unused logger/pyaudio-devices direct dependencies, obsolete private UI
+  methods, generated docs/build output and inactive GitLab release configuration.
+- Smaller Windows package: only Polly models, shared AWS metadata and TLS roots
+  are kept, excluding unused AWS service models. External Piper support stays.
+
+MAINTENANCE_REVIEW.md and scripts/benchmark_runtime.py describe reproducible
+component measurements and limits. They do not claim a whole-app FPS or startup
+speedup. Cloud/network latency and real audio hardware still need user testing.
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64) and replace the old file.
-Existing settings, Soundboard, SRT playback and shortcut fixes are preserved.
-
-Validation: canonical URL handling, rejection of non-YouTube targets, owned
-process lifecycle and failed-launch cleanup, dialog/global Stop integration, plus
-packaged Windows launch/stop of actual Edge on about:blank. CI does not play a
-YouTube video or validate real hardware audio routing; those need user testing.
+Validation includes regression tests, failed-write recovery, indexed cue timing,
+SDK lazy imports/client reuse, required AWS data files and the packaged Windows
+GUI/SAPI/worker audio/hotkeys/Edge/SRT checks. A real Polly SDK client is created
+with fake explicit credentials without contacting AWS.

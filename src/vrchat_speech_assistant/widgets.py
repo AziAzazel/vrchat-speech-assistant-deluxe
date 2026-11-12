@@ -2,7 +2,7 @@ import re
 
 from PySide6 import QtWidgets
 
-from vrchat_speech_assistant import providers, utils
+from vrchat_speech_assistant import utils
 try:
     from vrchat_speech_assistant import _config
 except ImportError:
@@ -24,8 +24,6 @@ class ConfigDialog(QtWidgets.QDialog):
         The default window width.
     DEFAULT_HEIGHT: int
         The default window height.
-    polly: providers.Polly
-        The Amazon Polly provider object.
     """
 
     DEFAULT_WIDTH = 200
@@ -110,15 +108,3 @@ class ConfigDialog(QtWidgets.QDialog):
         self.parent.target_language_combo.setCurrentText(self.parent.source_language_combo.currentText())
         self.parent.config["SPEECH"]["target_language"] = self.parent.source_language_combo.currentText()
         self.parent.save_config()
-
-    def _activate_aws(self):
-        self.parent.clear_log()
-        self.parent.toggle_activate_button.setEnabled(True)
-        self.aws_access_key_line_edit.setStyleSheet("")
-        self.aws_secret_key_line_edit.setStyleSheet("")
-
-    def _disable_aws(self):
-        self.aws_access_key_line_edit.setStyleSheet("background-color: red")
-        self.aws_secret_key_line_edit.setStyleSheet("background-color: red")
-        self.parent.log_line_edit.setText("Amazon AWS credentials are invalid.")
-        self.parent.toggle_activate_button.setEnabled(False)

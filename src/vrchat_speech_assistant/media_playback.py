@@ -47,7 +47,8 @@ def parse_srt(text):
 
 
 def load_srt(path):
-    raw = Path(path).read_bytes()
+    with Path(path).open('rb') as source:
+        raw = source.read(2_000_001)
     if len(raw) > 2_000_000:
         raise ValueError('Use an SRT file smaller than 2 MB.')
     if raw.startswith((b'\xff\xfe', b'\xfe\xff')):
@@ -64,6 +65,45 @@ def caption_at(cues, position):
     # Multiple overlapping cues share one chatbox update.
     text = ' '.join(cue.text for cue in cues if cue.start <= position < cue.end)
     return text if len(text) <= 144 else text[:143] + '…'
+
+
+class CaptionTimeline:
+    """Advance through cue boundaries instead of rescanning every cue at 50 Hz."""
+    def __init__(self, cues):
+        self.cues = tuple(cues)
+        self.events = sorted([(cue.start, 1, index) for index, cue in enumerate(self.cues)] +
+                             [(cue.end, 0, index) for index, cue in enumerate(self.cues)])
+        self._cursor = 0
+        self._active = set()
+        self._position = float('-inf')
+        self._text = ''
+
+    def at(self, position):
+        changed = False
+        if position < self._position:
+            self._cursor = 0
+            self._active.clear()
+            changed = True
+        self._position = position
+        while self._cursor < len(self.events) and self.events[self._cursor][0] <= position:
+            _, starting, index = self.events[self._cursor]
+            if starting:
+                self._active.add(index)
+            else:
+                self._active.discard(index)
+            self._cursor += 1
+            changed = True
+        if changed:
+            # Match caption_at's cue order, including overlapping captions.
+            chunks, size = [], 0
+            for index in sorted(self._active):
+                chunks.append(self.cues[index].text)
+                size += len(self.cues[index].text) + 1
+                if size > 145:
+                    break
+            text = ' '.join(chunks)
+            self._text = text if len(text) <= 144 else text[:143] + '…'
+        return self._text
 
 
 class CaptionSender:
@@ -90,17 +130,19 @@ class CaptionSender:
 
 
 class MediaSpeech:
-    def __init__(self, audio, subtitle='', offset_ms=0, output='Voice + chatbox', client=None):
+    def __init__(self, audio, subtitle='', offset_ms=0, output='Voice + chatbox', client=None, cues=None):
         self.audio, self.subtitle = Path(audio), subtitle
         self.offset = offset_ms/1000
         self.play_audio = output != 'Chatbox only'
         self.captions = output != 'Voice only' and bool(subtitle)
         self.client = client
+        self._cues = tuple(cues) if cues is not None else None
 
     def speech(self, text, voice, device, tags=None):
         import pygame.mixer
-        cues = load_srt(self.subtitle) if self.captions else []
+        cues = (self._cues if self._cues is not None else load_srt(self.subtitle)) if self.captions else []
         sender = CaptionSender(self.client) if self.captions else None
+        timeline = CaptionTimeline(cues) if sender else None
         initialized = False
         try:
             check_cancelled()
@@ -126,7 +168,7 @@ class MediaSpeech:
                     if position >= end:
                         break
                 if sender:
-                    sender.update(caption_at(cues, position - self.offset), now)
+                    sender.update(timeline.at(position - self.offset), now)
                 time.sleep(.02)
         finally:
             if initialized:

@@ -21,6 +21,24 @@ Polly synthesis and VRChat OSC workflow. It adds manual text input, nickname
 corrections and diagnostic logging. Music playback and singing synthesis are
 not implemented in this release.
 
+## Maintenance and performance (1.22)
+
+- Indexed SRT timing avoids scanning every subtitle at each playback tick.
+- Settings skip unchanged writes, batch startup/language-switch updates and use
+  atomic replacement. Pitch/ending sliders update live but persist once released.
+- Cloud SDKs and pygame load when needed; Polly clients and successful validation
+  are reused until keys/region change. Credential-check audio streams are closed.
+- Device probes enumerate once with one PortAudio context, still in an isolated
+  process. OSC handlers belong to each window; closed YouTube panels stop polling.
+- Unused direct dependencies, obsolete controls, generated documentation and the
+  inactive GitLab release setup were removed. Source docs and attribution remain.
+- Windows bundles retain Polly models, shared AWS metadata and TLS certificates;
+  unused AWS service models are excluded. Polly/fallback functionality remains.
+
+[Review, reproducible measurements and validation limits](MAINTENANCE_REVIEW.md)
+explain what was measured. These are component improvements, not a claim that
+all speech, network requests or application startup run at the same speedup.
+
 ## YouTube player without captions (1.21)
 
 Open **Roleplay → YouTube player (no captions)**, paste a YouTube video link and

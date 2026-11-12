@@ -40,10 +40,6 @@ def gui(tmp_path_factory):
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     # These platform dependencies are intentionally substituted on Linux.
     sys.modules["winsound"] = types.SimpleNamespace(PlaySound=Mock(), SND_ASYNC=1)
-    sys.modules["pyaudio_devices"] = types.ModuleType("pyaudio_devices")
-    sys.modules["pyaudio_devices"].get_devices = lambda **kwargs: [{"name": "Test device", "index": 0}]
-    sys.modules["pyaudio_devices.devices"] = types.SimpleNamespace(
-        get_devices=lambda **kwargs: [{"name": "Test device", "index": 0}])
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     main = importlib.import_module("vrchat_speech_assistant.main")

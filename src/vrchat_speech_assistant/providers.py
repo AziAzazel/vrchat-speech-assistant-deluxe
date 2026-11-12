@@ -6,12 +6,6 @@ import json
 import time
 from xml.sax.saxutils import escape
 
-import boto3
-import botocore
-import botocore.exceptions
-import pygame
-import pygame.mixer
-from botocore.config import Config
 from vrchat_speech_assistant.diagnostics import DATA_DIR
 from vrchat_speech_assistant.output_control import check_cancelled
 from vrchat_speech_assistant.languages import POLLY_VOICES_ENGINE
@@ -52,6 +46,8 @@ class Polly:
     """
 
     def __init__(self, aws_access_key_id: str, aws_secret_access_key: str, region_name: str):
+        import boto3
+        from botocore.config import Config
         my_config = Config(region_name=region_name, connect_timeout=10, read_timeout=30, retries={"max_attempts": 1})
         self.client = boto3.client(
             "polly",
@@ -98,20 +94,17 @@ class Polly:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         # Create the answer from Amazon Polly if the file does not exist
         if not filepath.exists():
-            try:
-                response = self.client.synthesize_speech(
-                    Engine=engine,
-                    Text=convert_to_ssml(text),
-                    VoiceId=voice_id.split(" ")[0],
-                    OutputFormat="ogg_vorbis",
-                    TextType="ssml",
-                )
-                temporary = filepath.with_suffix(".tmp")
-                with contextlib.closing(response["AudioStream"]) as stream:
-                    temporary.write_bytes(stream.read())
-                temporary.replace(filepath)
-            except botocore.exceptions.ClientError:
-                raise
+            response = self.client.synthesize_speech(
+                Engine=engine,
+                Text=convert_to_ssml(text),
+                VoiceId=voice_id.split(" ")[0],
+                OutputFormat="ogg_vorbis",
+                TextType="ssml",
+            )
+            temporary = filepath.with_suffix(".tmp")
+            with contextlib.closing(response["AudioStream"]) as stream:
+                temporary.write_bytes(stream.read())
+            temporary.replace(filepath)
         read_ogg_file(str(filepath), output_device_name)
 
     def test(self) -> bool:
@@ -122,9 +115,11 @@ class Polly:
         bool
             The test result.
         """
-        with contextlib.suppress(botocore.exceptions.ClientError):
-            self.client.synthesize_speech(Text="test", VoiceId="Justin", OutputFormat="ogg_vorbis")
-            return True
+        from botocore.exceptions import ClientError
+        with contextlib.suppress(ClientError):
+            response = self.client.synthesize_speech(Text="test", VoiceId="Justin", OutputFormat="ogg_vorbis")
+            with contextlib.closing(response["AudioStream"]):
+                return True
         return False
 
 
@@ -139,6 +134,8 @@ def read_ogg_file(filepath: str, output_device_name: str):
         The name of the output device to use for audio playback.
     """
 
+    import pygame
+    import pygame.mixer
     check_cancelled()
     pygame.mixer.pre_init(devicename=output_device_name)
     pygame.mixer.init()
@@ -150,3 +147,33 @@ def read_ogg_file(filepath: str, output_device_name: str):
             time.sleep(0.02)
     finally:
         pygame.mixer.quit()
+
+
+class PollyPool:
+    """Reuse one thread-safe boto client and successful credential validation.
+
+    Changing credentials or region replaces the cache; no keys are logged.
+    """
+    def __init__(self, factory=Polly):
+        import threading
+        self._factory = factory
+        self._lock = threading.Lock()
+        self._credentials = None
+        self._provider = None
+        self._validated = False
+
+    def get(self, credentials, validate=False):
+        access, secret, _ = credentials
+        if not access or not secret:
+            raise ValueError('Configure AWS credentials for Amazon Polly.')
+        with self._lock:
+            if self._credentials != credentials:
+                provider = self._factory(*credentials)
+                self._provider = provider
+                self._credentials = credentials
+                self._validated = False
+            if validate and not self._validated:
+                if not self._provider.test():
+                    raise ValueError('Amazon Polly credentials could not be validated.')
+                self._validated = True
+            return self._provider

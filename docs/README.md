@@ -3,8 +3,12 @@
 Sphinx is a popular tool for creating technical documentation using reStructuredText and its extensions.
 When working on our Python project, we use `sphinx-automodapi` to easily generate API documentation based on your code. This guide explains how to set up and run the process locally for testing purposes.
 
-### Note
-Building documentation locally might not be necessary when we have an automated GitLab pipeline for generating the documentation, which can be found by the file `.gitlab-ci.yml`
+### Build outputs and release pipeline
+
+Keep documentation sources in `docs/source`. The generated `docs/build` directory
+is ignored and can be regenerated locally; stale HTML and Sphinx caches are not
+checked into the repository. Windows executables are built and verified by
+[GitHub Actions](../.github/workflows/windows-release.yml).
 
 ### Prerequisite
 Install the current package with the "documentation" optional dependency using `pip install .[documentation]`.

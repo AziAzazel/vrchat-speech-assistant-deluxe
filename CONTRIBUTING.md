@@ -1,14 +1,14 @@
 # Contributing
 
-Discuss the change you wish to make via a GitLab issue with appropriate label(s).
+Discuss the change you wish to make via a GitHub issue with appropriate label(s).
 Then, if you want to contribute to this project:
 
 - Fork the repository.
-- Make a new branch from the `main`.
+- Make a new branch from `master`.
 - Comment your code, follow our docstring style (numpy), and documentation if needed.
 - Every commit message must have one of the prefixes in the table below.
 - Test your code as much as possible.
-- Create a merge request to `main`.
+- Create a pull request to `master`.
 - Thank your for your contribution :)
 
 ## Commit
@@ -33,7 +33,9 @@ Following [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1
 ### Pylint and Black formatting
 
 Please review your python code performance with pylint.
-An automated pylint pipeline is executed at every push.
+The active Windows/test/release workflow is `.github/workflows/windows-release.yml`.
+Run `PYTHONPATH=src python scripts/run_tests_ci.py` locally. Release tags must match
+`src/vrchat_speech_assistant/_version.py`; there is no GitLab semantic-release pipeline.
 Format your code using Black.
 
 ### Pydocstyle

@@ -102,3 +102,21 @@ def test_subtitles_only_use_clock_without_initializing_audio(monkeypatch, tmp_pa
     media.MediaSpeech('not-needed.wav', str(path), output='Chatbox only', client=client).speech('', '', None)
     mixer.init.assert_not_called()
     assert [call.args[1][0] for call in client.send_message.call_args_list] == ['Text', '']
+
+
+def test_indexed_timeline_matches_reference_across_overlap_gaps_and_rewind():
+    cues = [media.Cue(0, 2, 'first'), media.Cue(1, 3, 'second'), media.Cue(3, 4, 'third'),
+            media.Cue(1, 1.5, 'x'*180)]
+    timeline = media.CaptionTimeline(cues)
+    for position in (-1, 0, .5, 1, 1.49, 1.5, 2, 3, 4, 5, 1, 0, 3.5):
+        assert timeline.at(position) == media.caption_at(cues, position)
+
+
+def test_large_srt_timeline_caches_text_between_boundaries():
+    cues = [media.Cue(index*2, index*2+1, str(index)) for index in range(10000)]
+    timeline = media.CaptionTimeline(cues)
+    assert timeline.at(.2) == '0'
+    cursor = timeline._cursor
+    assert timeline.at(.8) == '0' and timeline._cursor == cursor
+    assert timeline.at(19998.5) == '9999'
+    assert timeline.at(19999.1) == ''

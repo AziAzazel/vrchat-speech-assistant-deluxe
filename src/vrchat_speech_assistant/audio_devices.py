@@ -49,28 +49,27 @@ def write_device_probe(report):
         import ctypes
         # Do not display a Windows crash dialog if a driver fails in the helper.
         ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002)
-    snapshot = {"inputs": _get_devices_in_probe("input"),
-                "outputs": _get_devices_in_probe("output"), "pid": os.getpid()}
-    Path(report).write_text(json.dumps(snapshot), encoding="utf-8")
-
-
-def _get_devices_in_probe(device_type):
     import pyaudio
     context = pyaudio.PyAudio()
     try:
-        preferred = pyaudio.paMME if device_type == "input" else pyaudio.paWASAPI
-        try:
-            api = context.get_host_api_info_by_type(preferred)["index"]
-        except OSError:
-            api = None
-        channel = "maxInputChannels" if device_type == "input" else "maxOutputChannels"
         devices = [context.get_device_info_by_index(i) for i in range(context.get_device_count())]
-        devices = [d for d in devices if d.get(channel, 0) > 0 and "Microsoft Sound Mapper" not in d["name"]]
-        matching = [d for d in devices if d.get("hostApi") == api]
-        selected = matching or devices
-        return sorted({d["name"]: d for d in selected}.values(), key=lambda d: d["name"])
+        snapshot = {"inputs": _select_devices(context, devices, "input", pyaudio),
+                    "outputs": _select_devices(context, devices, "output", pyaudio), "pid": os.getpid()}
     finally:
         context.terminate()
+    Path(report).write_text(json.dumps(snapshot), encoding="utf-8")
+
+
+def _select_devices(context, devices, device_type, api_constants):
+    preferred = api_constants.paMME if device_type == "input" else api_constants.paWASAPI
+    try:
+        api = context.get_host_api_info_by_type(preferred)["index"]
+    except OSError:
+        api = None
+    channel = "maxInputChannels" if device_type == "input" else "maxOutputChannels"
+    devices = [d for d in devices if d.get(channel, 0) > 0 and "Microsoft Sound Mapper" not in d["name"]]
+    matching = [d for d in devices if d.get("hostApi") == api]
+    return sorted({d["name"]: d for d in (matching or devices)}.values(), key=lambda d: d["name"])
 
 
 if __name__ == "__main__":

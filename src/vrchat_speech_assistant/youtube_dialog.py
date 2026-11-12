@@ -42,7 +42,6 @@ class YouTubeDialog(QtWidgets.QDialog):
         layout.addWidget(footer)
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.poll)
-        self.timer.start(1000)
         self.refresh_routing()
 
     def refresh_routing(self):
@@ -88,6 +87,11 @@ class YouTubeDialog(QtWidgets.QDialog):
         except OSError:
             self.status.setText('Open Windows Settings → System → Sound → Volume mixer to route Microsoft Edge audio.')
 
+    def showEvent(self, event):
+        self.timer.start(1000)
+        super().showEvent(event)
+
     def closeEvent(self, event):
+        self.timer.stop()
         self.stop()
         event.accept()

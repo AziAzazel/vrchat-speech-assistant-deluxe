@@ -865,3 +865,28 @@ def test_youtube_panel_stop_and_close_never_send_chatbox_or_synthesize(gui, wind
     panel.close()
     assert player.stop.call_count == 2
     panel.timer.stop()
+
+
+@pytest.mark.parametrize('name', ['speech_pitch_slider', 'ending_frequency'])
+def test_dragged_slider_updates_live_but_persists_only_on_release(gui, window, monkeypatch, name):
+    slider = getattr(window, name)
+    commit = Mock(wraps=window._settings_store._commit)
+    monkeypatch.setattr(window._settings_store, '_commit', commit)
+    slider.setSliderDown(True)
+    for value in (10, 20, 30):
+        slider.setValue(value)
+    commit.assert_not_called()
+    slider.setSliderDown(False)
+    assert commit.call_count == 1
+
+
+def test_osc_dispatcher_belongs_to_window_and_does_not_keep_old_callbacks(gui, window):
+    app, main = gui
+    first = window.dispatcher
+    window.close()
+    other = main.VRCSpeechAssistantWindow()
+    try:
+        assert other.dispatcher is not first
+        assert len(list(other.dispatcher.handlers_for_address('/pitch'))) == 1
+    finally:
+        other.close()

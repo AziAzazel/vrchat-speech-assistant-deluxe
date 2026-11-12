@@ -77,8 +77,19 @@ def smoke_test(report):
     try:
         for recording in (media_wav, RESOURCES_PATH / "playback-smoke.mp3"):
             probe = CaptionProbe()
-            with output_scope(threading.Event()):
-                MediaSpeech(recording, str(subtitles), client=probe).speech("", "", None)
+            playback_errors = []
+            def play_media():
+                try:
+                    with output_scope(threading.Event()):
+                        MediaSpeech(recording, str(subtitles), client=probe).speech("", "", None)
+                except Exception as error:
+                    playback_errors.append(error)
+            playback_thread = threading.Thread(target=play_media, daemon=True)
+            playback_thread.start()
+            playback_thread.join(10)
+            assert not playback_thread.is_alive(), "Worker audio playback did not finish"
+            if playback_errors:
+                raise playback_errors[0]
             assert any(args[0] == "Test ポイ" for _, args in probe.messages), "No timed subtitle"
             assert probe.messages[-1][1][0] == "", "Subtitle was not cleared"
     finally:
@@ -186,11 +197,28 @@ def smoke_test(report):
     assert "Speech device selector does not change Edge" in youtube_panel.routing.text()
     youtube_panel.close()
     youtube_panel.timer.stop()
+    from vrchat_speech_assistant.providers import Polly, PollyPool
+    # Construct the optional SDK client using fake explicit credentials: no AWS
+    # request or credential discovery. Lazy import must still be packaged fully.
+    polly_probe = Polly("test-access", "test-secret", "us-west-2")
+    assert polly_probe.client.meta.service_model.service_name == "polly"
+    polly_probe.client.close()
+    from vrchat_speech_assistant.settings_store import SettingsStore
+    import configparser
+    probe_config = configparser.ConfigParser()
+    probe_config["CHECK"] = {"value": "initial"}
+    store = SettingsStore(Path(os.environ["APPDATA"]) / "settings-smoke.ini")
+    with store.batch():
+        store.save(probe_config)
+        probe_config["CHECK"]["value"] = "final"
+        store.save(probe_config)
+    assert "final" in store.path.read_text(encoding="utf-8")
+    assert not store.save(probe_config)
     window.clear_history()
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed"}), encoding="utf-8")
 
 
 def main():

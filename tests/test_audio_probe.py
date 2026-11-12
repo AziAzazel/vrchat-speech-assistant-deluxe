@@ -60,3 +60,24 @@ def test_frozen_probe_reuses_executable_not_gui(monkeypatch):
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
     assert audio_devices._probe_command(Path('report.json')) == [sys.executable, '--audio-device-probe', 'report.json']
 
+
+
+def test_snapshot_uses_one_context_and_one_device_enumeration(monkeypatch, tmp_path):
+    context, factory = Mock(), Mock()
+    factory.return_value = context
+    context.get_device_count.return_value = 3
+    context.get_device_info_by_index.side_effect = [
+        {'name': 'Mic', 'hostApi': 1, 'index': 0, 'maxInputChannels': 1},
+        {'name': 'Cable', 'hostApi': 2, 'index': 1, 'maxOutputChannels': 2},
+        {'name': 'Microsoft Sound Mapper', 'hostApi': 1, 'index': 2, 'maxInputChannels': 1}]
+    context.get_host_api_info_by_type.side_effect = lambda api: {'index': api}
+    monkeypatch.setitem(sys.modules, 'pyaudio', SimpleNamespace(PyAudio=factory, paMME=1, paWASAPI=2))
+    report = tmp_path/'snapshot.json'
+    audio_devices.write_device_probe(report)
+    snapshot = json.loads(report.read_text())
+    assert [d['name'] for d in snapshot['inputs']] == ['Mic']
+    assert [d['name'] for d in snapshot['outputs']] == ['Cable']
+    factory.assert_called_once()
+    context.get_device_count.assert_called_once()
+    assert context.get_device_info_by_index.call_count == 3
+    context.terminate.assert_called_once()
