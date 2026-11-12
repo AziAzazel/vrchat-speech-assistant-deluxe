@@ -90,7 +90,7 @@ class EdgePlayer:
                 '--no-first-run', '--no-default-browser-check', '--disable-background-mode']
         job, process, thread = None, None, None
         try:
-            job = win32job.CreateJobObject(None, None)
+            job = win32job.CreateJobObject(None, '')
             information = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
             information['BasicLimitInformation']['LimitFlags'] |= win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
             win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, information)

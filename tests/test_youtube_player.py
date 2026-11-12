@@ -36,7 +36,11 @@ def native(monkeypatch, tmp_path):
     monkeypatch.setattr(youtube.sys, 'platform', 'win32')
     job, process, thread = Mock(), Mock(), Mock()
     jobs = Mock(JobObjectExtendedLimitInformation=9, JobObjectBasicAccountingInformation=1, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE=0x2000)
-    jobs.CreateJobObject.return_value = job
+    def create_job(security, name):
+        assert security is None
+        assert isinstance(name, str)  # pywin32 requires a string; empty = unnamed.
+        return job
+    jobs.CreateJobObject.side_effect = create_job
     jobs.QueryInformationJobObject.side_effect = lambda job, kind: ({'BasicLimitInformation': {'LimitFlags': 0}} if kind == 9 else {'ActiveProcesses': 1})
     processes, events, api = Mock(), Mock(), Mock()
     processes.CreateProcess.return_value = process, thread, 123, 456
@@ -54,6 +58,7 @@ def test_owned_browser_starts_suspended_and_stop_closes_only_its_job(native, tmp
     assert native.processes.CreateProcess.call_args.args[5] == 4
     arguments = native.processes.CreateProcess.call_args.args[1]
     assert '--user-data-dir=' in arguments and '--app=https://www.youtube.com/watch?' in arguments
+    native.jobs.CreateJobObject.assert_called_once_with(None, '')
     native.jobs.AssignProcessToJobObject.assert_called_once_with(native.job, native.process)
     native.processes.ResumeThread.assert_called_once_with(native.thread)
     native.thread.Close.assert_called_once()
