@@ -35,9 +35,9 @@ def native(monkeypatch, tmp_path):
     monkeypatch.setattr(youtube, 'find_edge', lambda: edge)
     monkeypatch.setattr(youtube.sys, 'platform', 'win32')
     job, process, thread = Mock(), Mock(), Mock()
-    jobs = Mock(JobObjectExtendedLimitInformation=9, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE=0x2000)
+    jobs = Mock(JobObjectExtendedLimitInformation=9, JobObjectBasicAccountingInformation=1, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE=0x2000)
     jobs.CreateJobObject.return_value = job
-    jobs.QueryInformationJobObject.return_value = {'BasicLimitInformation': {'LimitFlags': 0}}
+    jobs.QueryInformationJobObject.side_effect = lambda job, kind: ({'BasicLimitInformation': {'LimitFlags': 0}} if kind == 9 else {'ActiveProcesses': 1})
     processes, events, api = Mock(), Mock(), Mock()
     processes.CreateProcess.return_value = process, thread, 123, 456
     events.WAIT_TIMEOUT = 258
@@ -77,4 +77,13 @@ def test_failed_job_assignment_never_leaves_an_unowned_suspended_browser(native,
     native.job.Close.assert_called_once()
     native.process.Close.assert_called_once()
     native.thread.Close.assert_called_once()
+    assert not player.is_running
+
+
+def test_browser_children_remain_owned_after_launcher_exits(native, tmp_path):
+    player = youtube.EdgePlayer(tmp_path/'profile')
+    player.start(f'https://youtu.be/{VIDEO}')
+    native.events.WaitForSingleObject.return_value = 0  # Original launcher has exited.
+    assert player.is_running  # Browser children still exist in the same job.
+    player.stop()
     assert not player.is_running

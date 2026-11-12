@@ -44,6 +44,9 @@ jobs:
             Write-Output $smokeDetails
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Packaged smoke report"
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $smokeDetails
+            if (-not $finished -or $process.ExitCode -ne 0) {
+              Write-Output "::error title=Packaged smoke report::$smokeDetails"
+            }
           }
           if (-not $finished) { throw "Executable smoke test timed out" }
           if ($process.ExitCode -ne 0) { throw "Executable smoke test failed: $($process.ExitCode)" }

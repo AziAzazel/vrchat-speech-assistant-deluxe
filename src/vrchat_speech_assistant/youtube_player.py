@@ -64,10 +64,11 @@ class EdgePlayer:
 
     @property
     def is_running(self):
-        if self._process is None:
+        if self._job is None:
             return False
-        import win32event
-        return win32event.WaitForSingleObject(self._process, 0) == win32event.WAIT_TIMEOUT
+        import win32job
+        information = win32job.QueryInformationJobObject(self._job, win32job.JobObjectBasicAccountingInformation)
+        return information['ActiveProcesses'] > 0
 
     def start(self, url):
         target = youtube_url(url)

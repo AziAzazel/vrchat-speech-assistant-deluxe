@@ -1,4 +1,4 @@
-VRChat Speech Assistant Deluxe 1.21.0 release candidate 2
+VRChat Speech Assistant Deluxe 1.21.0 release candidate 3
 
 New: Roleplay → YouTube player (no captions).
 - Paste a YouTube video link to open the normal YouTube player in a dedicated
