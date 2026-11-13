@@ -38,6 +38,10 @@ def main():
     folder = target/'VRChatSpeechAssistantDeluxe'
     for source in (notices, root/'LICENSE', root/'docs/LINUX.md'):
         shutil.copy2(source, folder/source.name)
+    guide = folder/'LINUX.md'
+    guide.write_text(guide.read_text().replace('(../README.md)', '(https://github.com/AziAzazel/vrchat-speech-assistant-deluxe)')
+        .replace('(USAGE.md)', '(https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/blob/master/docs/USAGE.md)')
+        .replace('(../CHANGELOG.md)', '(https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/blob/master/CHANGELOG.md)'))
     start = folder/'start.sh'
     start.write_text('#!/bin/sh\ncd -- "$(dirname -- "$0")" || exit 1\nexec ./VRChatSpeechAssistantDeluxe "$@"\n')
     start.chmod(0o755)
