@@ -1150,7 +1150,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.edit_pending_message(focus=False)
         return self._start_output(preset["text"], preset["output"] != "Voice only",
                                   already_translated=True, apply_ending=False,
-                                  output_override=(speech, provider))
+                                  output_override=(speech, provider),
+                                  chatbox_override=preset.get("chatbox_text", "").strip() or None,
+                                  tags_override={"whispered": True} if spoken and preset.get("delivery") == "Whispered" else {})
 
     def play_recording(self, preset):
         from vrchat_speech_assistant.media_playback import MediaSpeech, load_srt
@@ -1522,7 +1524,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._voice_activity(False, self.output_chatbox_active)
         self.log_info("Output cancelled. Any in-flight cloud request will be discarded when it returns.")
 
-    def _start_output(self, text, send_chatbox, manual=False, already_translated=False, apply_ending=True, output_override=None, requires_audio=True):
+    def _start_output(self, text, send_chatbox, manual=False, already_translated=False, apply_ending=True, output_override=None, requires_audio=True, chatbox_override=None, tags_override=None):
         if self._closing or self.output_busy:
             return
         if not text.strip():
@@ -1557,6 +1559,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if output_override is not None:
             tags, corrections, pronunciations = {}, {}, {}
             roleplay = {"delivery": "Normal"}
+        if tags_override is not None:
+            tags = dict(tags_override)
         delivery = roleplay.get("delivery", "Normal")
         if delivery == "Confidential whisper" and self.config["SPEECH"].get("provider") != "Amazon Polly":
             self.log_warning("Confidential whisper requires Polly. Choose Polly or another delivery mode.")
@@ -1598,11 +1602,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 check_cancelled()
                 result = add_random_ending(result, ending_text, ending_frequency)
                 spoken = spoken_delivery(correct_nicknames(result, pronunciations), tags)
+                displayed = chatbox_override if chatbox_override is not None else result
                 entry["result"], entry["spoken"] = result, spoken
                 captions = None
                 if send_chatbox:
                     stage = "Chatbox output"
-                    chatbox_text = decorate_chatbox(result, rules, corrected_source)
+                    chatbox_text = decorate_chatbox(displayed, rules, corrected_source)
                     if roleplay.get("chatbox_tag", "false").lower() == "true":
                         tag = PERSONALITIES.get(roleplay.get("personality"), PERSONALITIES["Neutral"])[1]
                         if tag:

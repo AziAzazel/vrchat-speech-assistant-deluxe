@@ -8,6 +8,13 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.24.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.24.0rc1) — Separate Soundboard speech and chatbox text
+
+- Save independent chatbox text/emoji for each Soundboard phrase. Blank uses the spoken phrase, preserving existing shortcuts.
+- Add per-phrase Normal/Whispered delivery, independent of the main speech settings. Whisper requires a Polly Standard voice; unsupported spoken combinations are rejected before output.
+- Support one shortcut displaying 👀 while speaking Japanese ぽい with Polly Mizuki in Whispered delivery. Voice-only and chatbox-only routes remain available; recordings still use SRT captions.
+- Preserve the main voice/language and editor draft. Add persistence, output-route and style validation tests, plus packaged Windows checks for the new controls.
+
 ### [1.23.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.23.0rc1) — Live chatbox captions
 
 - Show the first text page before synthesis/playback rather than after the whole voice clip finishes.

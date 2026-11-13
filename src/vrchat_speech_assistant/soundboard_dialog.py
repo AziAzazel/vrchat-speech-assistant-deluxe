@@ -5,7 +5,7 @@ from PySide6 import QtGui, QtWidgets
 from vrchat_speech_assistant.shortcut_editor import ShortcutEdit, HotkeySettingsDialog
 from vrchat_speech_assistant.languages import DEEPL, VOICES
 from vrchat_speech_assistant.roleplay import ACTIONS, DEFAULT_HOTKEYS
-from vrchat_speech_assistant.soundboard import OUTPUTS, PROVIDERS, validate_presets
+from vrchat_speech_assistant.soundboard import OUTPUTS, PROVIDERS, DELIVERIES, validate_presets
 from vrchat_speech_assistant.windows_speech import WindowsSpeech
 
 
@@ -19,15 +19,18 @@ class SoundboardDialog(HotkeySettingsDialog):
         note = QtWidgets.QLabel(
             'Each shortcut sends exactly the saved phrase, without translation, random endings or personality effects. '
             'Choose a voice that speaks the selected language. Japanese example: ぽい (poi). '
+            'Chatbox text can differ from speech; leave it blank to show the spoken text. '
+            'Whispered delivery requires a Polly Standard voice (e.g. Mizuki), not Windows/Piper or Neural voices. '
             'Shortcuts are paused while these settings are open. Clear a shortcut to disable it. Recordings can use timed SRT captions. '
             'Polly needs your AWS keys; Windows voices must be installed; Piper uses the configured model for that language.')
         note.setWordWrap(True)
         layout.addWidget(note)
-        self.table = QtWidgets.QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(['Shortcut', 'Phrase', 'Language', 'Output', 'Provider', 'Voice', 'Recording / SRT'])
+        self.table = QtWidgets.QTableWidget(0, 9)
+        self.table.setHorizontalHeaderLabels(['Shortcut', 'Speech / name', 'Language', 'Output', 'Provider', 'Voice', 'Recording / SRT', 'Chatbox text', 'Delivery'])
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(7, QtWidgets.QHeaderView.Stretch)
         layout.addWidget(self.table)
         for preset in parent.soundboard_presets:
             self.add_row(preset)
@@ -57,6 +60,16 @@ class SoundboardDialog(HotkeySettingsDialog):
         phrase.setMaxLength(2500)
         self.table.setCellWidget(row, 0, key)
         self.table.setCellWidget(row, 1, phrase)
+        chatbox = QtWidgets.QLineEdit(preset.get('chatbox_text', ''))
+        chatbox.setMaxLength(2500)
+        chatbox.setPlaceholderText('Same as speech')
+        chatbox.setToolTip('Text/emoji shown in VRChat, independent of the spoken phrase. Blank uses the spoken text. Recordings use SRT instead.')
+        delivery = QtWidgets.QComboBox()
+        delivery.addItems(DELIVERIES)
+        delivery.setCurrentText(preset.get('delivery', 'Normal'))
+        delivery.setToolTip('Whispered: Amazon Polly Standard only (Japanese: Mizuki).')
+        self.table.setCellWidget(row, 7, chatbox)
+        self.table.setCellWidget(row, 8, delivery)
         language, output, provider, voice = [QtWidgets.QComboBox() for _ in range(4)]
         for column, combo, values, selected in [(2, language, DEEPL, preset['language']),
                                                (3, output, OUTPUTS, preset['output']),
@@ -90,6 +103,8 @@ class SoundboardDialog(HotkeySettingsDialog):
             voice.setEnabled(not recording and output.currentText() != 'Chatbox only')
             provider.setEnabled(not recording and output.currentText() != 'Chatbox only')
             language.setEnabled(not recording)
+            chatbox.setEnabled(not recording and output.currentText() != 'Voice only')
+            delivery.setEnabled(not recording and output.currentText() != 'Chatbox only')
         language.currentTextChanged.connect(refresh)
         provider.currentTextChanged.connect(refresh)
         output.currentTextChanged.connect(refresh)
@@ -127,11 +142,14 @@ class SoundboardDialog(HotkeySettingsDialog):
             self.table.removeRow(row)
 
     def preset(self, row):
-        return {**(self.table.cellWidget(row, 6).recording or {}),
+        recording = self.table.cellWidget(row, 6).recording
+        return {**(recording or {}),
                 'key': self.table.cellWidget(row, 0).keySequence().toString(QtGui.QKeySequence.PortableText),
                 'text': self.table.cellWidget(row, 1).text(),
                 **{field: self.table.cellWidget(row, column).currentText()
-                   for column, field in [(2, 'language'), (3, 'output'), (4, 'provider'), (5, 'voice')]}}
+                   for column, field in [(2, 'language'), (3, 'output'), (4, 'provider'), (5, 'voice')]},
+                **({} if recording else {'chatbox_text': self.table.cellWidget(row, 7).text(),
+                                         'delivery': self.table.cellWidget(row, 8).currentText()})}
 
     def play_selected(self):
         row = self.table.currentRow()

@@ -1,26 +1,26 @@
-VRChat Speech Assistant Deluxe 1.23.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.24.0 release candidate 1
 
-Fix: chatbox text no longer waits for the whole synthesized utterance to finish.
-- Publish the first complete page before synthesis/playback.
-- Format once and split long text into readable VRChat-sized pages, with UTF-16
-  limits for emoji/styled letters, word boundaries and long-word/CJK handling.
-- Advance pages during audio using playback position/duration; approximate page
-  alignment, not word-level timestamps. No unseen page is silently skipped.
-- Keep one synthesis/audio clip per utterance, preserving voice, pitch, delivery,
-  pronunciation, translations and avoiding extra per-page Polly requests.
-- Text-only pages have reading time; very fast audio can leave remaining pages
-  afterward instead of discarding them. Minimum update interval is 1.5 seconds.
-- Disable the legacy typewriter animation that delayed chatbox output.
-- Stop cancels future pages promptly and leaves already visible text in place.
-  Chatbox errors are reported separately from audio/device failures.
+Soundboard phrases can now show different text from what they say.
+- Speech / name: the phrase spoken by the saved voice.
+- Chatbox text: independent text or emoji. Leave blank to show the spoken phrase,
+  preserving existing shortcuts.
+- Delivery: Normal or Whispered, saved separately for each phrase. Whispered
+  requires an Amazon Polly Standard voice; Windows/Piper and Polly Neural voices
+  do not support this effect. Unsupported combinations are rejected before output.
 
-Editable preview and its configured countdown remain in effect. Recognition and
-translation must first produce the accepted text; Google still returns completed
-fragments, not live partial word-by-word transcripts. SRT/YouTube are unaffected.
+Example in Roleplay → Soundboard phrases and hotkeys:
+Ctrl+; | Speech: ぽい | Chatbox: 👀 | Japanese | Voice + chatbox |
+Amazon Polly | Mizuki | Whispered.
+The eyes appear before synthesis; the voice says only ぽい. Main speech settings,
+translation, corrections and random endings do not alter the phrase. The selected
+application output device is used. AWS credentials are required for Polly.
+
+Voice-only and chatbox-only routes still work. Recordings keep their SRT captions.
+Existing entries need no migration: matching chatbox text and Normal delivery are
+used until the new fields are edited. Settings survive replacing the executable.
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64) and replace the old file.
-Existing settings remain, with only obsolete typing animation disabled.
-Validation includes ordering before blocked speech, long-message completeness,
-UTF-16 pages, timed updates and cancellation, plus packaged Windows WAV/OGG tests
-that assert the second page is delivered while real audio playback is active.
-VRChat reception and real audio-device latency require user hardware testing.
+Validation covers independent speech/captions across all three routes, old presets,
+saved/reopened controls and unsupported whisper combinations. Packaged Windows
+smoke checks exercise the new controls without making live Polly requests.
+Actual Polly whisper and VRChat reception require configured user hardware/services.

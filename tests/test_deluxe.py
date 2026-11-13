@@ -752,6 +752,32 @@ def test_soundboard_text_only_needs_no_voice_keys_or_audio_device(gui, window, m
     assert chatbox.call_args.args[1] == 'ぽい'
 
 
+@pytest.mark.parametrize('mode', ['Voice only', 'Chatbox only', 'Voice + chatbox'])
+def test_soundboard_independent_emoji_caption_and_whisper(gui, window, monkeypatch, mode):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    app, main = gui
+    window.config['API'].update(aws_access_key='test-access', aws_secret_key='test-secret')
+    window.extra_tags = {'pitch': -20}
+    window.config['ROLEPLAY']['delivery'] = 'Malfunction'
+    chatbox, cloud = Mock(), Mock()
+    monkeypatch.setattr(main, 'write_chatbox', chatbox)
+    monkeypatch.setattr(main, 'Polly', Mock(return_value=cloud))
+    before = dict(window.config['SPEECH'])
+    assert window.play_soundboard(dict(DEFAULT_PRESETS[0], output=mode,
+                                      chatbox_text='👀', delivery='Whispered'))
+    wait_output(app, window)
+    if mode != 'Chatbox only':
+        cloud.speech.assert_called_once_with('ぽい', 'Mizuki', 'Test device', {'whispered': True})
+    else:
+        cloud.speech.assert_not_called()
+    if mode != 'Voice only':
+        assert chatbox.call_args.args[1] == '👀'
+    else:
+        chatbox.assert_not_called()
+    assert dict(window.config['SPEECH']) == before
+    assert window.history[-1]['result'] == 'ぽい'
+
+
 def test_soundboard_busy_does_not_queue_or_replace_draft(gui, window):
     from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
     window.output_busy = True
@@ -768,10 +794,20 @@ def test_soundboard_dialog_persists_and_registers_shortcut(gui, window, monkeypa
     dialog = SoundboardDialog(window)
     assert dialog.table.cellWidget(0, 2).currentText() == 'Japanese'
     assert dialog.table.cellWidget(0, 5).currentText() == 'Mizuki'
+    assert dialog.table.cellWidget(0, 7).text() == ''
+    assert dialog.table.cellWidget(0, 8).currentText() == 'Normal'
+    dialog.table.cellWidget(0, 7).setText('👀')
+    dialog.table.cellWidget(0, 8).setCurrentText('Whispered')
     dialog.table.cellWidget(0, 3).setCurrentText('Chatbox only')
     dialog.save()
     window._init_config()
     assert window.soundboard_presets[0]['output'] == 'Chatbox only'
+    assert window.soundboard_presets[0]['chatbox_text'] == '👀'
+    assert window.soundboard_presets[0]['delivery'] == 'Whispered'
+    reopened = SoundboardDialog(window)
+    assert reopened.table.cellWidget(0, 7).text() == '👀'
+    assert reopened.table.cellWidget(0, 8).currentText() == 'Whispered'
+    reopened.reject()
     if main.sys.platform != 'win32':
         assert any(shortcut.key().toString() == 'Ctrl+;' for shortcut in window.shortcuts)
 

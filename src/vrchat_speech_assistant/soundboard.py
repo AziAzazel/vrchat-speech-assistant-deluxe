@@ -5,6 +5,7 @@ from vrchat_speech_assistant.languages import DEEPL
 
 OUTPUTS = ('Voice only', 'Chatbox only', 'Voice + chatbox')
 PROVIDERS = ('Amazon Polly', 'Windows Speech', 'Piper (offline)')
+DELIVERIES = ('Normal', 'Whispered')
 DEFAULT_PRESETS = [{'key': 'Ctrl+;', 'text': 'ぽい', 'language': 'Japanese',
                     'output': 'Voice only', 'provider': 'Amazon Polly', 'voice': 'Mizuki'}]
 
@@ -21,6 +22,18 @@ def validate_presets(presets, other_keys=()):
         recording = preset.get('kind', 'phrase') == 'audio'
         if preset.get('kind', 'phrase') not in ('phrase', 'audio'):
             raise ValueError('Unknown soundboard entry type.')
+        if not recording:
+            chatbox = preset.get('chatbox_text', '')
+            if not isinstance(chatbox, str) or len(chatbox) > 2500:
+                raise ValueError('Chatbox text must contain at most 2500 characters.')
+            delivery = preset.get('delivery', 'Normal')
+            if delivery not in DELIVERIES:
+                raise ValueError('Choose a supported phrase delivery.')
+            if delivery == 'Whispered' and preset['output'] != 'Chatbox only':
+                if preset['provider'] != 'Amazon Polly':
+                    raise ValueError('Whispered phrases require an Amazon Polly Standard voice, such as Mizuki.')
+                from vrchat_speech_assistant.providers import validate_polly_style
+                validate_polly_style(preset['voice'], {'whispered': True})
         if recording:
             if not isinstance(preset.get('audio'), str) or Path(preset['audio']).suffix.lower() not in ('.wav', '.mp3'):
                 raise ValueError('Select a WAV or MP3 recording.')

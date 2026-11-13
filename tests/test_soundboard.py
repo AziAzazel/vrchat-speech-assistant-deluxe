@@ -24,3 +24,19 @@ def test_disabled_hotkeys_and_empty_soundboard_are_valid():
     assert validate_presets([]) == []
     preset = dict(DEFAULT_PRESETS[0], key='')
     assert validate_presets([preset, deepcopy(preset)])
+
+
+def test_separate_caption_and_standard_polly_whisper_are_valid():
+    preset = dict(DEFAULT_PRESETS[0], output='Voice + chatbox', chatbox_text='👀', delivery='Whispered')
+    assert validate_presets([preset]) == [preset]
+
+
+@pytest.mark.parametrize('extra', [
+    {'chatbox_text': None}, {'chatbox_text': 'x'*2501}, {'delivery': 'Unknown'},
+    {'delivery': 'Whispered', 'provider': 'Windows Speech'},
+    {'delivery': 'Whispered', 'provider': 'Piper (offline)'},
+    {'delivery': 'Whispered', 'voice': 'Kazuha [Neural]'},
+])
+def test_invalid_caption_or_unsupported_whisper_rejected(extra):
+    with pytest.raises(ValueError):
+        validate_presets([dict(DEFAULT_PRESETS[0], **extra)])

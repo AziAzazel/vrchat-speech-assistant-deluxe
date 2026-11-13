@@ -343,6 +343,19 @@ conflicts are reported in the app. Punctuation keys follow the Windows keyboard
 layout, including **Ctrl+;**.
 
 The initial example is **Ctrl+; → ぽい (poi), Japanese, Voice only, Polly Mizuki**.
+For independent speech and text, enter the spoken phrase in **Speech / name** and
+the text/emoji to display in **Chatbox text**. Leave Chatbox text blank to retain
+the old behavior (show the spoken phrase). The output route controls whether
+speech, chatbox text or both are sent; recordings continue to use SRT captions.
+
+Example: **Ctrl+;**, speech **ぽい**, chatbox **👀**, language **Japanese**,
+output **Voice + chatbox**, provider **Amazon Polly**, voice **Mizuki**,
+delivery **Whispered**. The eyes appear before synthesis, while only ぽい is
+spoken. **Delivery** belongs to the row and does not change the main speech style.
+Whisper requires a Polly Standard voice; Windows/Piper and Polly Neural voices
+cannot provide this effect. Unsupported spoken combinations are rejected before
+output. Existing rows default to Normal delivery and matching speech/chatbox text.
+
 Polly requires your configured AWS keys. For offline speech select an installed
 Japanese Windows desktop voice or a configured Japanese Piper model. The language
 field does not install a voice or translate text: enter the phrase in that language.
@@ -355,7 +368,7 @@ Piper uses the model saved for that language, or the current configured model.
 
 Routes explicitly override the main Speech/Chatbox toggles for the saved phrase.
 The main language, voice, microphone state and unsent editor text stay intact.
-An active preview countdown is paused. Phrases use normal delivery, bypass DeepL,
+An active preview countdown is paused. Phrases use their saved delivery and bypass DeepL,
 nickname/pronunciation substitutions, random endings and chatbox decorations, so
 saved text is sent consistently. Spoken output requires the selected audio device;
 there is no automatic cloud fallback. Busy output refuses another phrase rather
