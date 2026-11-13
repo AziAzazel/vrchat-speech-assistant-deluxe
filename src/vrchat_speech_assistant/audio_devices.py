@@ -11,6 +11,18 @@ import subprocess
 import sys
 import tempfile
 
+WINDOWS_AUDIO = sys.platform == 'win32'
+
+
+def sdl_output_devices():
+    # Playback uses SDL; PortAudio ALSA names ("pulse", "default") are not SDL
+    # PulseAudio device names and must never be offered as output-device IDs.
+    os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
+    import pygame._sdl2 as sdl
+    sdl.init_subsystem(sdl.INIT_AUDIO)
+    return [{'name': name, 'index': index} for index, name in
+            enumerate(sdl.audio.get_audio_device_names(False))]
+
 
 def _probe_command(report):
     if getattr(sys, "frozen", False):
@@ -53,15 +65,16 @@ def write_device_probe(report):
     context = pyaudio.PyAudio()
     try:
         devices = [context.get_device_info_by_index(i) for i in range(context.get_device_count())]
-        snapshot = {"inputs": _select_devices(context, devices, "input", pyaudio),
-                    "outputs": _select_devices(context, devices, "output", pyaudio), "pid": os.getpid()}
+        inputs = _select_devices(context, devices, "input", pyaudio)
+        outputs = _select_devices(context, devices, "output", pyaudio) if WINDOWS_AUDIO else sdl_output_devices()
+        snapshot = {"inputs": inputs, "outputs": outputs, "pid": os.getpid()}
     finally:
         context.terminate()
     Path(report).write_text(json.dumps(snapshot), encoding="utf-8")
 
 
 def _select_devices(context, devices, device_type, api_constants):
-    preferred = api_constants.paMME if device_type == "input" else api_constants.paWASAPI
+    preferred = (api_constants.paMME if device_type == "input" else api_constants.paWASAPI) if WINDOWS_AUDIO else api_constants.paALSA
     try:
         api = context.get_host_api_info_by_type(preferred)["index"]
     except OSError:
@@ -69,7 +82,8 @@ def _select_devices(context, devices, device_type, api_constants):
     channel = "maxInputChannels" if device_type == "input" else "maxOutputChannels"
     devices = [d for d in devices if d.get(channel, 0) > 0 and "Microsoft Sound Mapper" not in d["name"]]
     matching = [d for d in devices if d.get("hostApi") == api]
-    return sorted({d["name"]: d for d in (matching or devices)}.values(), key=lambda d: d["name"])
+    return sorted({d["name"]: d for d in (matching or devices)}.values(),
+                  key=lambda d: (not WINDOWS_AUDIO and d['name'] not in ('pulse', 'default'), d["name"]))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from vrchat_speech_assistant.languages import DEEPL, VOICES
 from vrchat_speech_assistant.roleplay import ACTIONS, DEFAULT_HOTKEYS
 from vrchat_speech_assistant.soundboard import OUTPUTS, PROVIDERS, DELIVERIES, validate_presets
 from vrchat_speech_assistant.windows_speech import WindowsSpeech
+from vrchat_speech_assistant.platform_support import IS_WINDOWS, DEFAULT_PROVIDER
 
 
 class SoundboardDialog(HotkeySettingsDialog):
@@ -50,7 +51,7 @@ class SoundboardDialog(HotkeySettingsDialog):
         if self.table.rowCount() >= 32:
             return
         preset = preset or {'key': '', 'text': 'Hello', 'language': 'English', 'output': 'Voice only',
-                            'provider': 'Windows Speech', 'voice': ''}
+                            'provider': DEFAULT_PROVIDER, 'voice': ''}
         recording = preset.get('kind') == 'audio'
         row = self.table.rowCount()
         self.table.insertRow(row)
@@ -87,6 +88,8 @@ class SoundboardDialog(HotkeySettingsDialog):
             combo.addItems(values)
             combo.setCurrentText(selected)
             self.table.setCellWidget(row, column, combo)
+        if not IS_WINDOWS:
+            provider.model().item(provider.findText('Windows Speech')).setEnabled(False)
         self.table.setCellWidget(row, 5, voice)
         def refresh():
             selected = voice.currentText() or preset['voice']

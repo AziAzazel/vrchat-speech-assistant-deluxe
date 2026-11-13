@@ -8,6 +8,15 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.27.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.27.0rc1) — Native Linux / Bazzite preview
+
+- Add a native portable Linux x86-64 build from the same source/version as Windows. Publish both platforms only after their tests and packaged smoke checks pass.
+- Default Linux synthesis to external Piper, retain Polly/DeepL, and isolate Windows desktop voices. Replace Windows-only notification calls with a GUI-thread platform adapter.
+- Enumerate Linux outputs using SDL and capture inputs using PortAudio, retaining isolated device scans. Honor XDG configuration directories.
+- Add an optional user-session virtual microphone helper for PipeWire-Pulse/PulseAudio, with reuse, rollback, ownership-checked removal and optional startup creation. Do not change system default devices.
+- Add local `--action` commands for KDE global shortcuts and an optional desktop menu launcher. Document app-focused/Gaming Mode shortcut limits and the Windows-only owned YouTube player.
+- Verify the packaged Linux GUI, real SDL audio captured from its virtual microphone, device probes and OSC UDP. Include a dedicated [Linux guide](docs/LINUX.md).
+
 ### [1.26.0rc3](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.26.0rc3) — Favorite reactions and chatbox preview
 
 - Add large, responsive favorite-reaction buttons backed by Soundboard entries, retaining their saved language, voice, route, whisper, pitch and separate chatbox text. Add starter reactions once for Polish/English when space is available, preserving existing entries and the 32-row limit.

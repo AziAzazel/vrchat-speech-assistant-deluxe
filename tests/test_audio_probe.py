@@ -63,6 +63,7 @@ def test_frozen_probe_reuses_executable_not_gui(monkeypatch):
 
 
 def test_snapshot_uses_one_context_and_one_device_enumeration(monkeypatch, tmp_path):
+    monkeypatch.setattr(audio_devices, 'WINDOWS_AUDIO', True)
     context, factory = Mock(), Mock()
     factory.return_value = context
     context.get_device_count.return_value = 3

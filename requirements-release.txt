@@ -1,4 +1,4 @@
-# Windows x64 / Python 3.12 build constraints; VCS revisions are pinned in pyproject.toml.
+# Windows/Linux x86-64 / Python 3.12 build constraints; VCS revisions are pinned in pyproject.toml.
 PyInstaller==6.16.0
 PySide6==6.6.0
 pygame==2.6.1
@@ -8,6 +8,6 @@ deepl==1.33.0
 SpeechRecognition==3.17.0
 python-osc==1.10.2
 PyAudio==0.2.14
-pywin32==311
+pywin32==311; sys_platform == "win32"
 pytest==9.2.0
 numpy==1.26.4

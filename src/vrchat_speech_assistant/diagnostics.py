@@ -8,7 +8,7 @@ import sys
 import threading
 import traceback
 
-DATA_DIR = Path(os.getenv("APPDATA") or Path.home() / ".config") / "VRChat Speech Assistant"
+DATA_DIR = Path(os.getenv("APPDATA") or os.getenv('XDG_CONFIG_HOME') or Path.home() / ".config") / "VRChat Speech Assistant"
 _fatal_file = None
 
 

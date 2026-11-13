@@ -11,7 +11,6 @@ from datetime import datetime
 import contextlib
 import sys
 import webbrowser
-import winsound
 from pathlib import Path
 from threading import Thread
 
@@ -53,6 +52,7 @@ from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
 from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS, validate_presets, LazySpeech, phrase_tags
 from vrchat_speech_assistant.responsive_ui import ResponsiveCards, CollapsibleCard
 from vrchat_speech_assistant.settings_store import SettingsStore, batch_settings
+from vrchat_speech_assistant.platform_support import IS_WINDOWS, DEFAULT_PROVIDER, NotificationPlayer
 
 CONFIG_FILE = DATA_DIR / "config.ini"
 RESOURCES_PATH = Path(__file__).parent / "resources"
@@ -71,6 +71,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     activity_signal = Signal(bool)
     hotkey_state_signal = Signal(str)
     chatbox_preview_signal = Signal(str, str, int)
+    notification_signal = Signal(str)
     history_entry_signal = Signal(object)
     history_changed = Signal()
     recognized_signal = Signal(str, int)
@@ -88,6 +89,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "input_device": None,
         },
         "UI": {"width": 1000, "height": 800, "maximized": False},
+        "LINUX_AUDIO": {"autostart": False},
         "ENDING": {"text": "", "frequency": 0},
         "PREVIEW": {"enabled": True, "delay": 3.0},
         "LANGUAGES": {"first": "English", "second": "Polish"},
@@ -106,7 +108,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             "show more settings": False,
             "source_language": "English",
             "target_language": "English",
-            "provider": "Windows Speech",
+            "provider": DEFAULT_PROVIDER,
             "polly_fallback": False,
             "fallback_voice": "Justin",
             "piper_model": "",
@@ -149,6 +151,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.pending_draft = False
         self.editor_dirty = False
         self.loading_editor = False
+        self.notification_player = NotificationPlayer(self)
+        self.notification_signal.connect(self.notification_player.play)
         self.editor_revision = 0
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
@@ -169,6 +173,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.output_chatbox_active = None
         self.output_requires_audio = False
         self.windows_speech = None
+        self.linux_virtual_mic = None
         self._closing = False
         self.translator = None
         self.speech_provider = None
@@ -185,6 +190,15 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._settings_store = SettingsStore(CONFIG_FILE, self._settings_save_failed)
         with self._settings_store.batch():
             self._init_config()
+            if not IS_WINDOWS and self.config['LINUX_AUDIO'].getboolean('autostart'):
+                from vrchat_speech_assistant.linux_audio import VirtualMicrophone
+                self.linux_virtual_mic = VirtualMicrophone()
+                try:
+                    self.linux_virtual_mic.create()
+                    inputs, outputs = self._detect_device_snapshot()
+                    self.input_devices, self.output_devices = inputs or self.input_devices, outputs or self.output_devices
+                except Exception:
+                    record_failure('Create Linux virtual microphone', *sys.exc_info()[::2])
             self._init_ui()
             self._init_translator()
         self._init_server()
@@ -212,12 +226,17 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._load_base_config()
         if CONFIG_FILE.exists():
             self.config.read(CONFIG_FILE, encoding="utf8")
+        if not IS_WINDOWS:
+            if self.config['SPEECH'].get('provider') == 'Windows Speech':
+                self.config['SPEECH']['provider'] = 'Piper (offline)'
         if not self.config["ROLEPLAY"].getboolean("global_scope_migrated"):
             self.config["ROLEPLAY"]["global_hotkeys"] = "True"
             self.config["ROLEPLAY"]["global_scope_migrated"] = "True"
             for action, previous in (("speak_paste", "Ctrl+Alt+F12"), ("switch_language", "Ctrl+Shift+F12")):
                 if self.config["ROLEPLAY"].get("key_" + action) == previous:
                     self.config["ROLEPLAY"]["key_" + action] = DEFAULT_HOTKEYS[action]
+        if not IS_WINDOWS:
+            self.config['ROLEPLAY']['global_hotkeys'] = 'False'
         if not self.config.has_section("SOUNDBOARD"):
             self.config["SOUNDBOARD"] = {"presets": json.dumps(DEFAULT_PRESETS, ensure_ascii=False)}
         self.soundboard_presets = []
@@ -296,7 +315,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         roleplay_menu = menu_bar.addMenu("Roleplay")
         roleplay_menu.addAction("Personality, delivery and hotkeys", self.edit_roleplay)
         roleplay_menu.addAction("Soundboard phrases and hotkeys", self.edit_soundboard)
-        roleplay_menu.addAction("YouTube player (no captions)", self.open_youtube)
+        youtube_action = roleplay_menu.addAction("YouTube player (no captions)", self.open_youtube)
+        if not IS_WINDOWS:
+            youtube_action.setEnabled(False)
+            youtube_action.setToolTip('The owned Edge player currently requires Windows. On Linux route your browser audio separately.')
+        if not IS_WINDOWS:
+            edit_menu.addAction('Linux audio routing / virtual microphone…', self.edit_linux_audio)
         for action in ACTIONS[:4]:
             roleplay_menu.addAction(action.title(), lambda checked=False, name=action: self.roleplay_action(name))
         more_menu = menu_bar.addMenu("More")
@@ -365,6 +389,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         speech_provider_label = QtWidgets.QLabel("Speech provider:")
         self.speech_provider_combo = QtWidgets.QComboBox()
         self.speech_provider_combo.addItems(["Windows Speech", "Piper (offline)", "Amazon Polly"])
+        if not IS_WINDOWS:
+            self.speech_provider_combo.model().item(0).setEnabled(False)
+            self.speech_provider_combo.model().item(0).setToolTip('Windows desktop voices are unavailable on Linux. Choose Piper or Polly.')
         self.speech_provider_combo.setCurrentText(self.config["SPEECH"].get("provider"))
         self.speech_provider_combo.currentTextChanged.connect(self._on_speech_provider_combo_clicked)
         self.piper_model_button = QtWidgets.QPushButton("Choose Piper voice model (.onnx)")
@@ -523,6 +550,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         main_layout.addWidget(self.progressbar)
         self.global_shortcuts_checkbox = QtWidgets.QCheckBox("Global hotkeys (also outside this app)")
         self.global_shortcuts_checkbox.setChecked(self.config["ROLEPLAY"].getboolean("global_hotkeys"))
+        if not IS_WINDOWS:
+            self.global_shortcuts_checkbox.setEnabled(False)
+            self.global_shortcuts_checkbox.setText('Windows global hotkeys (Linux: use KDE shortcuts / --action)')
         self.global_shortcuts_checkbox.toggled.connect(self._set_global_hotkeys)
         self.hotkey_state_label = QtWidgets.QLabel()
         self.hotkey_state_label.setWordWrap(True)
@@ -756,6 +786,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
         SoundboardDialog(self).exec()
 
+    def edit_linux_audio(self):
+        from vrchat_speech_assistant.linux_audio import LinuxAudioDialog
+        LinuxAudioDialog(self).exec()
+
     def _set_global_hotkeys(self, enabled):
         self.config["ROLEPLAY"]["global_hotkeys"] = str(enabled)
         self.save_config()
@@ -801,8 +835,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 ready=lambda count, total: self.hotkey_state_signal.emit(f"Global shortcuts registered: {count}/{total}"))
             self.global_hotkeys.start()
         else:
-            self.hotkey_state_signal.emit("App-focused shortcuts only" if not settings.getboolean("global_hotkeys")
-                                          else "Global shortcuts require Windows; app-focused shortcuts active here")
+            self.hotkey_state_signal.emit('Shortcuts need app focus. On Linux, bind --action commands in KDE; see the Linux guide.' if not IS_WINDOWS else
+                                          "App-focused shortcuts only")
             for action, key in bindings.items():
                 shortcut = QtGui.QShortcut(QtGui.QKeySequence(key), self)
                 shortcut.setContext(Qt.ApplicationShortcut)
@@ -911,7 +945,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._check_selected_speech_provider()
 
     def choose_piper_backend(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose Piper executable", "", "Executables (*.exe);;All files (*)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Choose Piper executable", "", "Executables (*.exe);;All files (*)" if IS_WINDOWS else "All files (*)")
         if path:
             self.config["SPEECH"]["piper_executable"] = path
             self.save_config()
@@ -1201,6 +1235,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                     raise ValueError("Configure AWS credentials, or select an installed local voice in Soundboard settings.")
                 provider = LazySpeech(lambda: self._polly_pool.get((access, secret, region)))
             elif spoken and preset["provider"] == "Windows Speech":
+                if not IS_WINDOWS:
+                    raise ValueError('Windows desktop voices are unavailable on Linux. Edit this phrase to use Piper or Polly.')
                 local = self.windows_speech or WindowsSpeech()
                 if preset["voice"] not in local.voices:
                     raise ValueError("Select an installed Windows desktop voice in Soundboard settings.")
@@ -1447,7 +1483,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             recognizer.pause_threshold = 0.5
             recognizer.non_speaking_duration = 0.5
             recognizer.dynamic_energy_threshold = False
-            winsound.PlaySound(str(RESOURCES_PATH / "on.wav"), winsound.SND_ASYNC)
+            self.notification_signal.emit(str(RESOURCES_PATH / "on.wav"))
             session = BackgroundListener(
                 recognizer, microphone, self.recognize,
                 lambda error: self.capture_failed_signal.emit(error, session), generation=lambda: self.recognition_epoch)
@@ -1465,7 +1501,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def stop_listener(self):
         """Stop the listener thread."""
-        winsound.PlaySound(str(RESOURCES_PATH / "off.wav"), winsound.SND_ASYNC)
+        self.notification_signal.emit(str(RESOURCES_PATH / "off.wav"))
         if self.listener:
             self.listener(wait_for_stop=False)
         self.recognition_epoch += 1
@@ -1497,12 +1533,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         try:
             source = self.config["SPEECH"].get("source_language")
             if self.config["APP"].getboolean("beep"):
-                winsound.PlaySound(str(RESOURCES_PATH / "recognizing.wav"), winsound.SND_ASYNC)
+                self.notification_signal.emit(str(RESOURCES_PATH / "recognizing.wav"))
             with stage_timer("recognition"):
                 text = recognizer.recognize_google(audio, language=GOOGLE[source])
             if not self._closing and text.lower() not in ("stop", "stoppe", "staff"):
                 if self.config["APP"].getboolean("beep"):
-                    winsound.PlaySound(str(RESOURCES_PATH / "recognized.wav"), winsound.SND_ASYNC)
+                    self.notification_signal.emit(str(RESOURCES_PATH / "recognized.wav"))
                 self.recognized_signal.emit(text, epoch)
         except speech_recognition.UnknownValueError:
             self.status_signal.emit("warning", "The voice recognition did not understand.")

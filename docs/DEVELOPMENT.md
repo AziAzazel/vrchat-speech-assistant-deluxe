@@ -2,15 +2,15 @@
 
 [README](../README.md) · [User guide](USAGE.md) · [Changelog](../CHANGELOG.md)
 
-The live application still requires Windows, audio devices, configured provider
-credentials and optionally VRChat/virtual audio cable. An unpublished private
+The live application supports Windows and Linux, with audio devices, configured
+providers and optionally VRChat/virtual audio routing. An unpublished private
 `_config.py` is no longer required; enter your own credentials in Configuration.
 Existing private defaults remain compatible. No shared keys are supplied.
 
 Use Python 3.12 and install with `python -m pip install -e ".[tests]"`, then run
 `python -m vrchat_speech_assistant.main` from the repository root.
-On Linux PyAudio needs PortAudio development headers; installing dependencies
-does not make the Windows-only application runnable there.
+On Linux PyAudio needs PortAudio development headers. Run the native Linux
+entry point with `python -m vrchat_speech_assistant`; see the Linux guide.
 
 Run `PYTHONPATH=src python -m pytest -q` on Linux. The headless GUI tests use
 actual Qt widgets but simulate Windows sounds, audio devices and cloud services;
@@ -56,3 +56,11 @@ measurements and packaging details, [the upstream review](../UPSTREAM_REVIEW.md)
 for imported changes, and [the Sphinx guide](README.md) for API documentation.
 The full user-facing release history belongs in [CHANGELOG.md](../CHANGELOG.md);
 `RELEASE_NOTES.md` supplies notes for the next tagged executable build.
+
+## Linux builds
+
+Use the same source tree and version. See [Linux setup](LINUX.md) for user-facing
+routing, packaging and current platform limits. `scripts/build_linux.py` creates
+an x86-64 portable directory/archive on Ubuntu 22.04. The release workflow tests
+Windows and Linux and publishes both only after both jobs pass. Linux's packaged
+smoke uses a real PulseAudio server, virtual-microphone capture and local OSC UDP.

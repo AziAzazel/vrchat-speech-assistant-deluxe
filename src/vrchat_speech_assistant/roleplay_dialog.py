@@ -30,6 +30,7 @@ class RoleplayDialog(HotkeySettingsDialog):
         layout.addWidget(self.tag)
         self.global_keys = QtWidgets.QCheckBox("Enable global Windows hotkeys while VRChat is focused")
         self.global_keys.setChecked(settings.getboolean("global_hotkeys"))
+        self.global_keys.setEnabled(parent.global_shortcuts_checkbox.isEnabled())
         layout.addWidget(self.global_keys)
         layout.addWidget(QtWidgets.QLabel("With global keys off, shortcuts work only while this app is focused. Clear a key to disable it."))
         self.language_first = QtWidgets.QComboBox()

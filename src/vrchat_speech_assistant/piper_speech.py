@@ -8,6 +8,7 @@ import tempfile
 import wave
 
 from vrchat_speech_assistant.windows_speech import LocalSynthesisError
+from vrchat_speech_assistant.platform_support import external_process_env
 from vrchat_speech_assistant.output_control import run_process, OutputCancelled
 
 
@@ -27,7 +28,7 @@ class PiperSpeech:
             if self.executable or getattr(sys, "frozen", False):
                 backend = self.executable or shutil.which("piper")
                 if not backend or not Path(backend).is_file():
-                    raise ValueError("Install Piper separately and select its piper.exe backend")
+                    raise ValueError("Install Piper separately and select its executable backend")
                 command = [str(Path(backend).resolve())]
             # No shell interpolation, automatic downloads, or text in argv/logs.
             run_process(
@@ -36,7 +37,7 @@ class PiperSpeech:
                  "--length-scale", str(100 / max(50, min(200, rate)))],
                 input=text, encoding="utf-8", stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE, check=True, timeout=120,
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                env={**external_process_env(), "PYTHONIOENCODING": "utf-8"},
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             with wave.open(str(path), "rb") as audio:

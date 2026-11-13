@@ -32,6 +32,7 @@ classifiers = [ # https://pypi.org/classifiers/
     "Environment :: Win32 (MS Windows)",
     "Intended Audience :: End Users/Desktops",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -60,6 +61,9 @@ documentation = [
 tests = [
     "pytest",
 ]
+
+[project.scripts]
+vrchat-speech-assistant-deluxe = "vrchat_speech_assistant.launcher:main"
 
 [project.urls]
 Documentation = "https://github.com/AziAzazel/vrchat-speech-assistant-deluxe#readme"

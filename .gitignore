@@ -153,3 +153,5 @@ cython_debug/
 #.idea/
 
 _config.py
+
+.build_linux/

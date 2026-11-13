@@ -3,7 +3,7 @@
 [Project overview](../README.md) · [Changelog / historia zmian](../CHANGELOG.md) · [Developer guide](DEVELOPMENT.md)
 
 This guide describes the current Deluxe application. For changes between releases,
-see the changelog. Windows x64 is the supported standalone platform.
+see the changelog. Standalone downloads support Windows x64 and Linux x86-64. For Bazzite, routing and platform differences, start with the [Linux guide](LINUX.md).
 
 ## First setup: VRChat, virtual cable and OSC
 

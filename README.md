@@ -4,7 +4,7 @@
   <img src="./Logo%20VR%20Chat%20Speech%20Assistant%20Deluxe.png" alt="VRChat Speech Assistant Deluxe — official project logo" width="420">
 </p>
 
-**[Download for Windows](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases)** · **[Changelog / Historia zmian](CHANGELOG.md)** · **[User guide](docs/USAGE.md)**
+**[Download Windows / Linux](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases)** · **[Changelog / Historia zmian](CHANGELOG.md)** · **[User guide](docs/USAGE.md)**
 
 Speak through your microphone or type/paste a message, then let a selected
 computer voice say it in VRChat. Optionally show the text above your avatar,
@@ -28,6 +28,8 @@ This is vibe-coded but works better than the original in my opinion. If there ar
 Recognition still uses Google online. Windows/Piper synthesis can run locally;
 DeepL and Polly require your own credentials. No shared API keys are included.
 Built-in AI answers and singing synthesis are not implemented.
+
+Linux x86-64 / Bazzite: download the portable `.tar.gz` and follow the **[Linux guide](docs/LINUX.md)**. Piper/Polly are supported; Windows desktop voices remain Windows-only.
 
 ## Quick start
 

@@ -14,6 +14,13 @@ import pytest
 @pytest.fixture
 def window(gui, monkeypatch):
     app, main = gui
+    # These shared regression cases exercise the original Windows settings.
+    # Native Linux startup/routing has its own tests and packaged smoke check.
+    from copy import deepcopy
+    settings = deepcopy(main.VRCSpeechAssistantWindow.CONFIG)
+    settings['SPEECH']['provider'] = 'Windows Speech'
+    monkeypatch.setattr(main, 'IS_WINDOWS', True)
+    monkeypatch.setattr(main.VRCSpeechAssistantWindow, 'CONFIG', settings)
     monkeypatch.setattr(main.VRCSpeechAssistantWindow, "_init_translator", lambda self: None)
     monkeypatch.setattr(main.VRCSpeechAssistantWindow, "_check_selected_speech_provider", lambda self: None)
     window = main.VRCSpeechAssistantWindow()
