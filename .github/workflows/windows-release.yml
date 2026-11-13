@@ -111,7 +111,7 @@ jobs:
           set -o pipefail
           xvfb-run -a env QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb dist/linux/VRChatSpeechAssistantDeluxe/VRChatSpeechAssistantDeluxe --smoke-test "$PWD/linux-smoke-test.json" 2>&1 | tee linux-smoke-output.txt
           cat linux-smoke-test.json
-          python -c "import json; d=json.load(open('linux-smoke-test.json')); assert all(d.get(k)=='passed' for k in ('virtual_microphone','isolated_device_probe','real_sdl_to_virtual_microphone','gui_and_shared_controls','real_osc_udp','local_action_control')), d"
+          python -c "import json; d=json.load(open('linux-smoke-test.json')); assert all(d.get(k)=='passed' for k in ('virtual_microphone','isolated_device_probe','real_sdl_to_virtual_microphone','gui_and_shared_controls','real_osc_udp','local_action_control','route_cleanup')), d"
       - name: Publish safe failure details
         if: failure()
         run: |

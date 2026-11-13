@@ -115,6 +115,15 @@ def smoke_test(report_path):
             server.server_close()
             worker.join(3)
         checks['real_osc_udp'] = 'passed'
+        stage('route_cleanup')
+        window.close()
+        app.processEvents()
+        window = None
+        if route.owned:
+            route.remove()
+            assert not any(d['name'] == SOURCE for d in json.loads(pulse('-f', 'json', 'list', 'sources')))
+            assert not any(d['name'] == SINK for d in json.loads(pulse('-f', 'json', 'list', 'sinks')))
+        checks['route_cleanup'] = 'passed'
         checks.pop('stage', None)
         Path(report_path).write_text(json.dumps(checks, indent=2), encoding='utf-8')
     finally:
@@ -124,4 +133,5 @@ def smoke_test(report_path):
         if window is not None:
             window.close()
             app.processEvents()
-        route.remove()
+        if route.owned:
+            route.remove()

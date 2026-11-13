@@ -13,6 +13,8 @@ The portable build targets glibc 2.35+ (Ubuntu 22.04+, current Bazzite).
    same GitHub release as the Windows executable. Verify `SHA256SUMS-linux.txt`.
 2. Extract the **entire** folder to a permanent location in your home directory.
    Keep the executable and `_internal` together. Do not run from inside the archive.
+   On updates, replace the whole program folder rather than merging old libraries;
+   settings remain in your home directory.
 3. Run `start.sh` (choose Execute in the file manager), or open a terminal there
    and run `./start.sh`. No Python/pip install is needed for the portable download.
 4. Optional: `./start.sh --install-desktop` adds a user menu launcher pointing to
@@ -80,7 +82,8 @@ is not used. In KDE Desktop Mode, configure a system custom shortcut to run:
 /path/to/VRChatSpeechAssistantDeluxe/start.sh --action soundboard_0
 ```
 
-Use any existing Roleplay action name or `soundboard_0` through `soundboard_31`.
+Use any existing Roleplay action name or `soundboard_0` through `soundboard_31`
+(the first table row is `soundboard_0`).
 These commands send an action to an already running Deluxe on localhost UDP 7001;
 they do not create a second GUI. Delivery has no acknowledgment. Keep Deluxe open.
 Closing shortcut settings continues to restore app-focused bindings.
