@@ -1,4 +1,4 @@
-VRChat Speech Assistant Deluxe 1.26.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.26.0 release candidate 2
 
 Favorite reactions on large buttons
 - Mark Favorite ★ in Roleplay → Soundboard phrases and hotkeys, then Save.
