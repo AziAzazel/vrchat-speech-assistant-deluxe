@@ -741,7 +741,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self._disable_target_language_combo()
 
     def _map_command(self, address, callback):
-        self.dispatcher.map(address, lambda *args: self.command_signal.emit(lambda: callback(*args)))
+        def queue_command(*args):
+            self.command_signal.emit(lambda: callback(*args))
+            # python-osc treats callback return values as OSC replies. Qt's
+            # emit() may return a bool, which is not a valid response address.
+        self.dispatcher.map(address, queue_command)
 
     def _init_server(self):
         def thread_server():

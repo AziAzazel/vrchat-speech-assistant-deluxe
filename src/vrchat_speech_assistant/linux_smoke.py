@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -87,6 +88,17 @@ def smoke_test(report_path):
             app.processEvents()
             assert window.responsive_cards.columns == columns
         checks['gui_and_shared_controls'] = 'passed'
+        stage('local_action_control')
+        command = [sys.executable]
+        if not getattr(sys, 'frozen', False):
+            command += ['-m', 'vrchat_speech_assistant']
+        subprocess.run([*command, '--action', 'stop_speaking'], check=True, timeout=10)
+        deadline = time.monotonic() + 3
+        while not window.draft_status.text().startswith('Stopped.') and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(.01)
+        assert window.draft_status.text().startswith('Stopped.')
+        checks['local_action_control'] = 'passed'
         stage('osc_udp')
         received = threading.Event()
         dispatcher = Dispatcher()

@@ -1201,3 +1201,10 @@ def test_reflow_uses_viewport_even_when_content_is_wider(gui, window):
     window.resize(650, 700)
     app.processEvents()
     assert window.responsive_cards.columns == 1
+
+
+def test_local_control_callback_does_not_return_invalid_osc_reply(gui, window):
+    handler = next(window.dispatcher.handlers_for_address('/roleplay'))
+    assert handler.callback('/roleplay', 'stop_speaking') is None
+    gui[0].processEvents()
+    assert window.draft_status.text().startswith('Stopped.')
