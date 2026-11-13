@@ -521,6 +521,12 @@ def test_cards_reflow_and_labels_wrap(gui, window):
     window.resize(1500, 700)
     app.processEvents()
     assert window.responsive_cards.columns == 3
+    window.resize(1100, 700)
+    app.processEvents()
+    assert window.responsive_cards.columns == 2
+    window.resize(650, 700)
+    app.processEvents()
+    assert window.responsive_cards.columns == 1
     assert window.hotkey_state_label.wordWrap()
     assert window.log_line_edit.wordWrap()
     assert window.toggle_activate_button.maximumWidth() > 1000
@@ -1175,3 +1181,16 @@ def test_soundboard_keeps_saved_missing_local_voice_while_editing(gui, window):
     assert window.soundboard_presets[0]['voice'] == 'Missing voice'
     assert not window.play_soundboard(window.soundboard_presets[0])
     assert 'installed Windows' in window.log_line_edit.text()
+
+
+def test_reflow_uses_viewport_even_when_content_is_wider(gui, window):
+    app, main = gui
+    window.responsive_cards.setMinimumWidth(1600)
+    window.show()
+    window.resize(1100, 700)
+    app.processEvents()
+    assert window.responsive_cards.width() >= 1600
+    assert window.responsive_cards.columns == 2
+    window.resize(650, 700)
+    app.processEvents()
+    assert window.responsive_cards.columns == 1

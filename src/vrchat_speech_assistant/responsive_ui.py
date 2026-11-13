@@ -6,6 +6,7 @@ class ResponsiveCards(QtWidgets.QWidget):
     def __init__(self, cards, parent=None):
         super().__init__(parent)
         self.cards = cards
+        self._viewport = None
         self.columns = 0
         self.grid = QtWidgets.QGridLayout(self)
         self.grid.setContentsMargins(0, 0, 0, 0)
@@ -14,7 +15,16 @@ class ResponsiveCards(QtWidgets.QWidget):
         self.reflow()
 
     def reflow(self):
-        columns = max(1, min(3, self.width() // 400))
+        # Grid minimum widths can exceed the visible area (notably with Windows
+        # font metrics). Do not use that overflow to select still more columns.
+        width = self.width()
+        if self._viewport is not None:
+            width = self._viewport.width()
+            parent_layout = self.parentWidget().layout()
+            if parent_layout is not None:
+                margins = parent_layout.contentsMargins()
+                width -= margins.left() + margins.right()
+        columns = max(1, min(3, width // 400))
         if columns == self.columns:
             return
         self.columns = columns
@@ -28,6 +38,29 @@ class ResponsiveCards(QtWidgets.QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.reflow()
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        return QtCore.QSize(0, hint.height())
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        ancestor = self.parentWidget()
+        while ancestor is not None and not isinstance(ancestor, QtWidgets.QScrollArea):
+            ancestor = ancestor.parentWidget()
+        viewport = ancestor.viewport() if ancestor is not None else None
+        if viewport is not self._viewport:
+            if self._viewport is not None:
+                self._viewport.removeEventFilter(self)
+            self._viewport = viewport
+            if viewport is not None:
+                viewport.installEventFilter(self)
+        self.reflow()
+
+    def eventFilter(self, watched, event):
+        if watched is self._viewport and event.type() == QtCore.QEvent.Resize:
+            self.reflow()
+        return super().eventFilter(watched, event)
 
 
 class CollapsibleCard(QtWidgets.QFrame):

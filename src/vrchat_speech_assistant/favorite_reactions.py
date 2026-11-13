@@ -41,7 +41,7 @@ class FavoriteReactions(QtWidgets.QWidget):
             font.setBold(True)
             button.setFont(font)
             button.setToolTip(f"{text}\n{preset['language']} · {preset['voice']} · {preset['output']}")
-            button.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            button.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
             button.clicked.connect(lambda checked=False, saved=dict(preset): self.play(saved))
             self.buttons.append(button)
         self.empty.setVisible(not self.buttons)

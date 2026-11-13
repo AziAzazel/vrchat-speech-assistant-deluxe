@@ -1,4 +1,4 @@
-VRChat Speech Assistant Deluxe 1.26.0 release candidate 2
+VRChat Speech Assistant Deluxe 1.26.0 release candidate 3
 
 Favorite reactions on large buttons
 - Mark Favorite ★ in Roleplay → Soundboard phrases and hotkeys, then Save.
@@ -23,6 +23,9 @@ Separate display text in the main editor
   additions; the selected font applies. Blank uses the normal message.
 - Editing pauses auto-send. History Repeat retains separate text; a fresh
   recognition preview clears the previous action to prevent accidental reuse.
+
+Responsive columns now follow the visible scroll viewport, avoiding oversized
+three-column layouts on Windows and allowing the window to shrink again.
 
 Also retain saved local voice choices when the backend/model is temporarily
 unavailable, so editing another Soundboard row does not erase those choices.
