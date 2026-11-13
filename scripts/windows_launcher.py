@@ -200,9 +200,11 @@ def smoke_test(report):
     assert soundboard.table.cellWidget(0, 5).currentText() == "Mizuki"
     assert soundboard.table.cellWidget(0, 7).text() == ""
     assert soundboard.table.cellWidget(0, 8).currentText() == "Normal"
+    assert soundboard.table.cellWidget(0, 9).value() == 0
     soundboard.table.cellWidget(0, 3).setCurrentText("Voice + chatbox")
     soundboard.table.cellWidget(0, 7).setText("👀")
     soundboard.table.cellWidget(0, 8).setCurrentText("Whispered")
+    soundboard.table.cellWidget(0, 9).setValue(50)
     soundboard.save()
     assert window._hotkey_edit_depth == 0 and window.global_hotkeys is not None
     assert window.global_hotkeys.ready_event.wait(5)
@@ -210,6 +212,7 @@ def smoke_test(report):
     assert window.soundboard_presets[0]["output"] == "Voice + chatbox"
     assert window.soundboard_presets[0]["chatbox_text"] == "👀"
     assert window.soundboard_presets[0]["delivery"] == "Whispered"
+    assert window.soundboard_presets[0]["pitch"] == 50
     def edge_progress(stage):
         Path(report).write_text(json.dumps({"version": __version__, "stage": stage}), encoding="utf-8")
     edge_progress("youtube_edge_lookup")

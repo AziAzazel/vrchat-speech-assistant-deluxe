@@ -1,26 +1,20 @@
-VRChat Speech Assistant Deluxe 1.24.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.25.0 release candidate 1
 
-Soundboard phrases can now show different text from what they say.
-- Speech / name: the phrase spoken by the saved voice.
-- Chatbox text: independent text or emoji. Leave blank to show the spoken phrase,
-  preserving existing shortcuts.
-- Delivery: Normal or Whispered, saved separately for each phrase. Whispered
-  requires an Amazon Polly Standard voice; Windows/Piper and Polly Neural voices
-  do not support this effect. Unsupported combinations are rejected before output.
+Add a saved Pitch control to Roleplay → Soundboard phrases and hotkeys.
+- Range: -50% to +50%, with 0% for the natural voice pitch.
+- Each phrase saves its own pitch; the main Voice pitch slider is unchanged.
+- Combine pitch with Whispered delivery on a Polly Standard voice such as Mizuki.
+- Nonzero pitch requires Polly Standard. Windows/Piper and Polly Neural voices
+  require pitch 0; unsupported spoken combinations are rejected before output.
+- Old phrases default to pitch 0. Chatbox-only rows retain the value without
+  applying it, and recordings keep their original audio/SRT behavior.
+- Widen the Soundboard window to accommodate the additional control.
 
-Example in Roleplay → Soundboard phrases and hotkeys:
-Ctrl+; | Speech: ぽい | Chatbox: 👀 | Japanese | Voice + chatbox |
-Amazon Polly | Mizuki | Whispered.
-The eyes appear before synthesis; the voice says only ぽい. Main speech settings,
-translation, corrections and random endings do not alter the phrase. The selected
-application output device is used. AWS credentials are required for Polly.
-
-Voice-only and chatbox-only routes still work. Recordings keep their SRT captions.
-Existing entries need no migration: matching chatbox text and Normal delivery are
-used until the new fields are edited. Settings survive replacing the executable.
+Example: Ctrl+; | Speech: ぽい | Chatbox: 👀 | Japanese | Voice + chatbox |
+Amazon Polly | Mizuki | Whispered | Pitch: +20%.
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64) and replace the old file.
-Validation covers independent speech/captions across all three routes, old presets,
-saved/reopened controls and unsupported whisper combinations. Packaged Windows
-smoke checks exercise the new controls without making live Polly requests.
-Actual Polly whisper and VRChat reception require configured user hardware/services.
+Existing settings survive. Validation covers -50/0/+50 across all output routes,
+invalid values and unsupported providers, saved/reopened controls, and packaged
+Windows GUI checks. No live Polly request is made by the automated tests;
+actual voice quality and VRChat reception require configured user hardware/services.

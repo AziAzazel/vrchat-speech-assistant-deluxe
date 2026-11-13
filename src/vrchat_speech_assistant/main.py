@@ -48,7 +48,7 @@ from vrchat_speech_assistant.text_tools import correct_nicknames, decorate_chatb
 from vrchat_speech_assistant.piper_speech import PiperSpeech
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS, announcement, spoken_delivery
 from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
-from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS, validate_presets, LazySpeech
+from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS, validate_presets, LazySpeech, phrase_tags
 from vrchat_speech_assistant.responsive_ui import ResponsiveCards, CollapsibleCard
 from vrchat_speech_assistant.settings_store import SettingsStore, batch_settings
 
@@ -1152,7 +1152,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                                   already_translated=True, apply_ending=False,
                                   output_override=(speech, provider),
                                   chatbox_override=preset.get("chatbox_text", "").strip() or None,
-                                  tags_override={"whispered": True} if spoken and preset.get("delivery") == "Whispered" else {})
+                                  tags_override=phrase_tags(preset) if spoken else {})
 
     def play_recording(self, preset):
         from vrchat_speech_assistant.media_playback import MediaSpeech, load_srt

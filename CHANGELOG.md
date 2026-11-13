@@ -8,6 +8,12 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.25.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.25.0rc1) — Soundboard phrase pitch
+
+- Add a saved −50% to +50% Pitch control per Soundboard phrase, independent of the main pitch slider. Existing phrases default to 0%.
+- Combine pitch with Whispered delivery on Polly Standard voices such as Mizuki. Reject unsupported nonzero pitch on local/Neural voices before output.
+- Preserve text-only routing and recording playback. Expand the settings window and cover pitch boundaries, validation and persistence in automated tests and packaged Windows checks.
+
 ### [1.24.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.24.0rc1) — Separate Soundboard speech and chatbox text
 
 - Save independent chatbox text/emoji for each Soundboard phrase. Blank uses the spoken phrase, preserving existing shortcuts.

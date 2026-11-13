@@ -10,6 +10,13 @@ DEFAULT_PRESETS = [{'key': 'Ctrl+;', 'text': 'ぽい', 'language': 'Japanese',
                     'output': 'Voice only', 'provider': 'Amazon Polly', 'voice': 'Mizuki'}]
 
 
+def phrase_tags(preset):
+    tags = {'whispered': True} if preset.get('delivery') == 'Whispered' else {}
+    if preset.get('pitch', 0):
+        tags['pitch'] = preset['pitch']
+    return tags
+
+
 def validate_presets(presets, other_keys=()):
     if not isinstance(presets, list) or len(presets) > 32:
         raise ValueError('Use at most 32 soundboard phrases.')
@@ -29,11 +36,14 @@ def validate_presets(presets, other_keys=()):
             delivery = preset.get('delivery', 'Normal')
             if delivery not in DELIVERIES:
                 raise ValueError('Choose a supported phrase delivery.')
-            if delivery == 'Whispered' and preset['output'] != 'Chatbox only':
+            pitch = preset.get('pitch', 0)
+            if type(pitch) is not int or not -50 <= pitch <= 50:
+                raise ValueError('Phrase pitch must be a whole number between -50 and +50%.')
+            if (delivery == 'Whispered' or pitch) and preset['output'] != 'Chatbox only':
                 if preset['provider'] != 'Amazon Polly':
-                    raise ValueError('Whispered phrases require an Amazon Polly Standard voice, such as Mizuki.')
+                    raise ValueError('Whisper and pitch require an Amazon Polly Standard voice, such as Mizuki. Use Normal delivery and pitch 0 for local voices.')
                 from vrchat_speech_assistant.providers import validate_polly_style
-                validate_polly_style(preset['voice'], {'whispered': True})
+                validate_polly_style(preset['voice'], phrase_tags(preset))
         if recording:
             if not isinstance(preset.get('audio'), str) or Path(preset['audio']).suffix.lower() not in ('.wav', '.mp3'):
                 raise ValueError('Select a WAV or MP3 recording.')

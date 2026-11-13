@@ -14,19 +14,19 @@ class SoundboardDialog(HotkeySettingsDialog):
         super().__init__(parent)
         self.window = parent
         self.setWindowTitle('Soundboard phrases and hotkeys')
-        self.resize(1120, 460)
+        self.resize(1220, 460)
         layout = QtWidgets.QVBoxLayout(self)
         note = QtWidgets.QLabel(
             'Each shortcut sends exactly the saved phrase, without translation, random endings or personality effects. '
             'Choose a voice that speaks the selected language. Japanese example: ぽい (poi). '
             'Chatbox text can differ from speech; leave it blank to show the spoken text. '
-            'Whispered delivery requires a Polly Standard voice (e.g. Mizuki), not Windows/Piper or Neural voices. '
+            'Whisper and pitch (-50 to +50%) require a Polly Standard voice (e.g. Mizuki), not Windows/Piper or Neural voices. '
             'Shortcuts are paused while these settings are open. Clear a shortcut to disable it. Recordings can use timed SRT captions. '
             'Polly needs your AWS keys; Windows voices must be installed; Piper uses the configured model for that language.')
         note.setWordWrap(True)
         layout.addWidget(note)
-        self.table = QtWidgets.QTableWidget(0, 9)
-        self.table.setHorizontalHeaderLabels(['Shortcut', 'Speech / name', 'Language', 'Output', 'Provider', 'Voice', 'Recording / SRT', 'Chatbox text', 'Delivery'])
+        self.table = QtWidgets.QTableWidget(0, 10)
+        self.table.setHorizontalHeaderLabels(['Shortcut', 'Speech / name', 'Language', 'Output', 'Provider', 'Voice', 'Recording / SRT', 'Chatbox text', 'Delivery', 'Pitch'])
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
@@ -70,6 +70,12 @@ class SoundboardDialog(HotkeySettingsDialog):
         delivery.setToolTip('Whispered: Amazon Polly Standard only (Japanese: Mizuki).')
         self.table.setCellWidget(row, 7, chatbox)
         self.table.setCellWidget(row, 8, delivery)
+        pitch = QtWidgets.QSpinBox()
+        pitch.setRange(-50, 50)
+        pitch.setSuffix('%')
+        pitch.setValue(preset.get('pitch', 0))
+        pitch.setToolTip('Pitch shift: -50 to +50%. 0 keeps the natural pitch. Requires a Polly Standard voice; can be combined with Whispered delivery.')
+        self.table.setCellWidget(row, 9, pitch)
         language, output, provider, voice = [QtWidgets.QComboBox() for _ in range(4)]
         for column, combo, values, selected in [(2, language, DEEPL, preset['language']),
                                                (3, output, OUTPUTS, preset['output']),
@@ -105,6 +111,7 @@ class SoundboardDialog(HotkeySettingsDialog):
             language.setEnabled(not recording)
             chatbox.setEnabled(not recording and output.currentText() != 'Voice only')
             delivery.setEnabled(not recording and output.currentText() != 'Chatbox only')
+            pitch.setEnabled(not recording and output.currentText() != 'Chatbox only')
         language.currentTextChanged.connect(refresh)
         provider.currentTextChanged.connect(refresh)
         output.currentTextChanged.connect(refresh)
@@ -149,7 +156,8 @@ class SoundboardDialog(HotkeySettingsDialog):
                 **{field: self.table.cellWidget(row, column).currentText()
                    for column, field in [(2, 'language'), (3, 'output'), (4, 'provider'), (5, 'voice')]},
                 **({} if recording else {'chatbox_text': self.table.cellWidget(row, 7).text(),
-                                         'delivery': self.table.cellWidget(row, 8).currentText()})}
+                                         'delivery': self.table.cellWidget(row, 8).currentText(),
+                                         'pitch': self.table.cellWidget(row, 9).value()})}
 
     def play_selected(self):
         row = self.table.currentRow()

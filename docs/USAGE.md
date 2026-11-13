@@ -356,6 +356,13 @@ Whisper requires a Polly Standard voice; Windows/Piper and Polly Neural voices
 cannot provide this effect. Unsupported spoken combinations are rejected before
 output. Existing rows default to Normal delivery and matching speech/chatbox text.
 
+**Pitch** sets the saved phrase's pitch from **−50% to +50%**, independently of
+the main Voice pitch slider. **0%** keeps the natural pitch and is the default for
+older rows. Pitch can be combined with Whispered delivery. A nonzero value needs
+a **Polly Standard** voice, such as Mizuki; use 0% for Windows/Piper or Polly Neural.
+Chatbox-only entries retain the setting without applying it. Pitch and delivery
+are disabled for recordings, which keep their original audio.
+
 Polly requires your configured AWS keys. For offline speech select an installed
 Japanese Windows desktop voice or a configured Japanese Piper model. The language
 field does not install a voice or translate text: enter the phrase in that language.
