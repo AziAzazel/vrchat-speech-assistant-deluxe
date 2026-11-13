@@ -803,6 +803,7 @@ def test_soundboard_dialog_persists_and_registers_shortcut(gui, window, monkeypa
     dialog.table.cellWidget(0, 7).setText('👀')
     dialog.table.cellWidget(0, 8).setCurrentText('Whispered')
     dialog.table.cellWidget(0, 9).setValue(35)
+    dialog.table.cellWidget(0, 10).setChecked(True)
     dialog.table.cellWidget(0, 3).setCurrentText('Chatbox only')
     dialog.save()
     window._init_config()
@@ -810,10 +811,13 @@ def test_soundboard_dialog_persists_and_registers_shortcut(gui, window, monkeypa
     assert window.soundboard_presets[0]['chatbox_text'] == '👀'
     assert window.soundboard_presets[0]['delivery'] == 'Whispered'
     assert window.soundboard_presets[0]['pitch'] == 35
+    assert window.soundboard_presets[0]['favorite'] is True
+    assert window.favorite_reactions.buttons[0].text() == 'ぽい'
     reopened = SoundboardDialog(window)
     assert reopened.table.cellWidget(0, 7).text() == '👀'
     assert reopened.table.cellWidget(0, 8).currentText() == 'Whispered'
     assert reopened.table.cellWidget(0, 9).value() == 35
+    assert reopened.table.cellWidget(0, 10).isChecked()
     assert not reopened.table.cellWidget(0, 9).isEnabled()  # Chatbox-only route.
     reopened.reject()
     if main.sys.platform != 'win32':
@@ -994,3 +998,180 @@ def test_long_message_uses_one_synthesis_with_all_pages_during_playback(gui, win
     window.speech_provider.speech.assert_called_once()
     assert ' '.join(sent) == source
     assert all(len(page) <= 144 for page in sent)
+
+
+def test_manual_independent_chatbox_and_final_preview(gui, window, monkeypatch):
+    app, main = gui
+    window.config['SPEECH'].update(enabled='True', provider='Amazon Polly', voice='Mizuki')
+    window.extra_tags = {}
+    chatbox = Mock()
+    monkeypatch.setattr(main, 'write_chatbox', chatbox)
+    window.config['ROLEPLAY'].update(delivery='Normal', personality='Helpful assistant', chatbox_tag='True')
+    window.config['CHATBOX']['keyword_additions'] = 'True'
+    window.chatbox_rules = {'hello': 'unwanted addition'}
+    window.manual_chatbox.setChecked(True)
+    window.separate_chatbox.setChecked(True)
+    window.manual_text.setPlainText('Hello there')
+    window.custom_chatbox_text.setPlainText('*patrzy podejrzliwie* 👀')
+    assert window.chatbox_preview.pages == ['*patrzy podejrzliwie* 👀']
+    window.speak_manual_text()
+    wait_output(app, window)
+    assert window.speech_provider.speech.call_args.args[0] == 'Hello there'
+    assert chatbox.call_args.args[1] == '*patrzy podejrzliwie* 👀'
+    assert window.chatbox_preview.pages == ['*patrzy podejrzliwie* 👀']
+    assert 'Final' in window.chatbox_preview.note.text()
+
+
+def test_paged_preview_matches_font_and_utf16_split_without_sending(gui, window, monkeypatch):
+    from vrchat_speech_assistant.live_chatbox import split_pages, utf16_units
+    from chatbox_osc.main import text_with_font
+    app, main = gui
+    chatbox = Mock()
+    monkeypatch.setattr(main, 'write_chatbox', chatbox)
+    window.config['ROLEPLAY']['chatbox_tag'] = 'False'
+    source = '👀 hello ' * 50
+    window.manual_text.setPlainText(source)
+    expected = split_pages(text_with_font(source.strip(), window.font_combo.currentText()))
+    assert window.chatbox_preview.pages == expected
+    assert len(expected) > 1 and all(utf16_units(page) <= 144 for page in expected)
+    window.chatbox_preview.next.click()
+    assert window.chatbox_preview.text.toPlainText() == expected[1]
+    assert f'2 / {len(expected)}' in window.chatbox_preview.counter.text()
+    window.chatbox_preview.previous.click()
+    assert window.chatbox_preview.text.toPlainText() == expected[0]
+    chatbox.assert_not_called()
+    window.speech_provider.speech.assert_not_called()
+
+
+def test_custom_chatbox_edit_pauses_auto_send_and_rejects_oversize(gui, window):
+    app, main = gui
+    window.preview_checkbox.setChecked(True)
+    window.preview_delay.setValue(30)
+    window._submit_recognized('Keep this phrase', window.recognition_epoch)
+    assert window.preview_timer.isActive()
+    window.separate_chatbox.setChecked(True)
+    window.custom_chatbox_text.setPlainText('👀')
+    assert not window.preview_timer.isActive() and window.editor_dirty
+    window._submit_recognized('Do not replace', window.recognition_epoch)
+    assert window.manual_text.toPlainText() == 'Keep this phrase'
+    window.custom_chatbox_text.setPlainText('x' * 2501)
+    window.speak_manual_text()
+    assert not window.output_busy
+    window.speech_provider.speech.assert_not_called()
+    assert '2500' in window.log_line_edit.text()
+
+
+def test_starter_favorites_are_bounded_saved_and_added_once(gui, window):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    from vrchat_speech_assistant.favorite_reactions import STARTERS
+    window.soundboard_presets = [dict(DEFAULT_PRESETS[0])]
+    window.config['UI']['reaction_starters_added'] = 'False'
+    window.config['SPEECH'].update(target_language='Polish', provider='Amazon Polly', voice='Ewa')
+    window._seed_favorite_reactions()
+    favorites = [p for p in window.soundboard_presets if p.get('favorite')]
+    assert [p['text'] for p in favorites] == list(STARTERS['Polish'])
+    assert all(p['language'] == 'Polish' and p['voice'] == 'Ewa' and not p['key'] for p in favorites)
+    window._seed_favorite_reactions()
+    assert len(window.soundboard_presets) == 7
+    window._init_config()
+    assert len(window.soundboard_presets) == 7
+    window.config['UI']['reaction_starters_added'] = 'False'
+    window.soundboard_presets = [dict(DEFAULT_PRESETS[0], key='') for _ in range(31)]
+    window._seed_favorite_reactions()
+    assert len(window.soundboard_presets) == 32
+
+
+def test_favorite_button_uses_soundboard_route_style_and_preserves_draft(gui, window, monkeypatch):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    app, main = gui
+    window.config['API'].update(aws_access_key='test-access', aws_secret_key='test-secret')
+    cloud, chatbox = Mock(), Mock()
+    monkeypatch.setattr(main, 'Polly', Mock(return_value=cloud))
+    monkeypatch.setattr(main, 'write_chatbox', chatbox)
+    window.soundboard_presets = [dict(DEFAULT_PRESETS[0], favorite=True, chatbox_text='👀',
+                                      delivery='Whispered', pitch=20, output='Voice + chatbox')]
+    window._refresh_favorites()
+    window.manual_text.setPlainText('Unsent draft')
+    window.separate_chatbox.setChecked(True)
+    window.custom_chatbox_text.setPlainText('Unsent action')
+    button = window.favorite_reactions.buttons[0]
+    assert button.minimumHeight() >= 64
+    button.click()
+    assert not button.isEnabled()
+    wait_output(app, window)
+    assert button.isEnabled()
+    cloud.speech.assert_called_once_with('ぽい', 'Mizuki', 'Test device', {'whispered': True, 'pitch': 20})
+    assert chatbox.call_args.args[1] == '👀'
+    assert window.manual_text.toPlainText() == 'Unsent draft'
+    assert window.custom_chatbox_text.toPlainText() == 'Unsent action'
+
+
+def test_late_output_preview_does_not_replace_new_custom_draft(gui, window):
+    window.manual_text.setPlainText('Same spoken phrase')
+    revision = window.editor_revision
+    window.separate_chatbox.setChecked(True)
+    window.custom_chatbox_text.setPlainText('New draft action')
+    window._show_output_chatbox_preview('Same spoken phrase', 'Old output', revision)
+    assert window.chatbox_preview.pages == ['New draft action']
+
+
+def test_history_repeat_retains_separate_chatbox_text(gui, window, monkeypatch):
+    app, main = gui
+    window.config['SPEECH'].update(enabled='True', provider='Amazon Polly', voice='Mizuki')
+    window.config['ROLEPLAY']['delivery'] = 'Normal'
+    window.extra_tags = {}
+    window.manual_chatbox.setChecked(True)
+    window.separate_chatbox.setChecked(True)
+    window.manual_text.setPlainText('Hello')
+    window.custom_chatbox_text.setPlainText('*looks suspicious*')
+    monkeypatch.setattr(main, 'write_chatbox', Mock())
+    window.speak_manual_text()
+    wait_output(app, window)
+    entry = window.history[-1]
+    assert entry['result'] == 'Hello' and entry['chatbox_override'] == '*looks suspicious*'
+    start = Mock(return_value=True)
+    monkeypatch.setattr(window, '_start_output', start)
+    assert window.replay_history(entry)
+    assert start.call_args.kwargs['chatbox_override'] == '*looks suspicious*'
+    window.custom_chatbox_text.clear()
+    window.separate_chatbox.setChecked(False)
+    window.manual_text.clear()
+    assert window.load_history_source(entry)
+    assert window.separate_chatbox.isChecked()
+    assert window.custom_chatbox_text.toPlainText() == '*looks suspicious*'
+
+
+def test_new_recognition_draft_clears_previous_sent_action(gui, window):
+    window.separate_chatbox.setChecked(True)
+    window.custom_chatbox_text.setPlainText('Previous action')
+    # A completed send leaves the editor available for the next recognized draft.
+    window.editor_dirty = False
+    window.preview_checkbox.setChecked(True)
+    window.preview_delay.setValue(30)
+    window._submit_recognized('A fresh utterance', window.recognition_epoch)
+    assert window.pending_draft
+    assert not window.separate_chatbox.isChecked()
+    assert not window.custom_chatbox_text.toPlainText()
+    assert window.chatbox_preview.pages == ['A fresh utterance']
+
+
+def test_preview_keyword_matching_uses_corrected_source(gui, window):
+    window.config['ROLEPLAY']['chatbox_tag'] = 'False'
+    window.corrections = {'nickname': 'Neko'}
+    window.chatbox_rules = {'nickname': 'wrong', 'Neko': '👀'}
+    window.keyword_additions_checkbox.setChecked(True)
+    window.manual_text.setPlainText('Hello nickname')
+    assert window.chatbox_preview.pages == ['Hello Neko 👀']
+
+
+def test_soundboard_keeps_saved_missing_local_voice_while_editing(gui, window):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
+    window.windows_speech = Mock(voices={'Available voice': 'English'})
+    window.soundboard_presets = [dict(DEFAULT_PRESETS[0], key='', provider='Windows Speech', voice='Missing voice')]
+    dialog = SoundboardDialog(window)
+    assert dialog.table.cellWidget(0, 5).currentText() == 'Missing voice'
+    dialog.save()
+    assert window.soundboard_presets[0]['voice'] == 'Missing voice'
+    assert not window.play_soundboard(window.soundboard_presets[0])
+    assert 'installed Windows' in window.log_line_edit.text()

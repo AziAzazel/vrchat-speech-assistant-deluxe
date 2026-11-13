@@ -40,6 +40,7 @@ def test_separate_caption_and_standard_polly_whisper_are_valid():
     {'pitch': None}, {'pitch': 10, 'provider': 'Windows Speech'},
     {'pitch': -10, 'provider': 'Piper (offline)'},
     {'pitch': 10, 'voice': 'Kazuha [Neural]'},
+    {'favorite': 'yes'},
 ])
 def test_invalid_caption_or_unsupported_whisper_rejected(extra):
     with pytest.raises(ValueError):

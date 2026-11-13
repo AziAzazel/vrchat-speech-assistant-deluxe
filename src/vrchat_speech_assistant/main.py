@@ -21,6 +21,8 @@ from vrchat_speech_assistant.audio_devices import get_device_snapshot
 from vrchat_speech_assistant.listener import BackgroundListener
 from vrchat_speech_assistant.output_control import output_scope, playback_scope, check_cancelled, OutputCancelled, CancellableOSC
 from vrchat_speech_assistant.live_chatbox import LiveChatbox, ChatboxOutputError
+from vrchat_speech_assistant.chatbox_preview import ChatboxPreview, format_chatbox
+from vrchat_speech_assistant.favorite_reactions import FavoriteReactions, STARTERS
 from PySide6 import QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal, QTimer
 from pythonosc.dispatcher import Dispatcher
@@ -44,7 +46,7 @@ except ImportError:
 
 
 from vrchat_speech_assistant.diagnostics import DATA_DIR, record_failure
-from vrchat_speech_assistant.text_tools import correct_nicknames, decorate_chatbox, add_random_ending
+from vrchat_speech_assistant.text_tools import correct_nicknames, add_random_ending
 from vrchat_speech_assistant.piper_speech import PiperSpeech
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS, announcement, spoken_delivery
 from vrchat_speech_assistant.hotkeys import GlobalHotkeys, parse_hotkey
@@ -68,6 +70,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     status_signal = Signal(str, str)
     activity_signal = Signal(bool)
     hotkey_state_signal = Signal(str)
+    chatbox_preview_signal = Signal(str, str, int)
     history_entry_signal = Signal(object)
     history_changed = Signal()
     recognized_signal = Signal(str, int)
@@ -146,6 +149,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.pending_draft = False
         self.editor_dirty = False
         self.loading_editor = False
+        self.editor_revision = 0
         self.preview_timer = QTimer(self)
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.speak_manual_text)
@@ -159,6 +163,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.history = []
         self.history_sequence = 0
         self.history_entry_signal.connect(self._record_history)
+        self.chatbox_preview_signal.connect(self._show_output_chatbox_preview)
         self.output_busy = False
         self.youtube_window = None
         self.output_chatbox_active = None
@@ -216,9 +221,11 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if not self.config.has_section("SOUNDBOARD"):
             self.config["SOUNDBOARD"] = {"presets": json.dumps(DEFAULT_PRESETS, ensure_ascii=False)}
         self.soundboard_presets = []
+        self.soundboard_load_failed = False
         try:
             self.soundboard_presets = validate_presets(json.loads(self.config["SOUNDBOARD"].get("presets", "[]")))
         except (ValueError, TypeError):
+            self.soundboard_load_failed = True
             record_failure("Load soundboard presets", *sys.exc_info()[::2])
         # Instant full pages replace the legacy per-character typing animation.
         self.config["CHATBOX"]["animation"] = "False"
@@ -491,6 +498,17 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         main_layout.addWidget(self.edit_message_button)
         self.manual_chatbox = QtWidgets.QCheckBox("Also send pasted text to VRChat Chatbox")
         main_layout.addWidget(self.manual_chatbox)
+        self.separate_chatbox = QtWidgets.QCheckBox('Use separate Chatbox text (manual / edited draft)')
+        self.custom_chatbox_text = QtWidgets.QPlainTextEdit()
+        self.custom_chatbox_text.setPlaceholderText('Text/emoji/action shown in VRChat. Blank uses the spoken message. This text is not spoken or translated.')
+        self.custom_chatbox_text.setMaximumHeight(85)
+        self.custom_chatbox_text.setEnabled(False)
+        self.separate_chatbox.toggled.connect(self.custom_chatbox_text.setEnabled)
+        self.separate_chatbox.toggled.connect(self._editor_changed)
+        self.custom_chatbox_text.textChanged.connect(self._editor_changed)
+        self.chatbox_preview = ChatboxPreview()
+        self.font_combo.currentTextChanged.connect(self._refresh_chatbox_preview)
+        self.keyword_additions_checkbox.toggled.connect(self._refresh_chatbox_preview)
         self.speak_button = QtWidgets.QPushButton("Speak / send now")
         self.speak_button.clicked.connect(self.speak_manual_text)
         main_layout.addWidget(self.speak_button)
@@ -527,6 +545,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         message_card = card("Message preview and speech", [self.manual_text, self.preview_checkbox], "messages")
         message_card.content_layout.addLayout(delay_row)
         for widget in (self.draft_status, self.edit_message_button, self.manual_chatbox,
+                       self.separate_chatbox, self.custom_chatbox_text, self.chatbox_preview,
                        self.speak_button, self.stop_speech_button):
             message_card.content_layout.addWidget(widget)
         history_button = QtWidgets.QPushButton("Session history")
@@ -551,7 +570,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         note.setWordWrap(True)
         ending_card = card("Random ending", [self.ending_text, self.ending_frequency_label, self.ending_frequency, note], "endings")
         self._update_ending_label()
-        self.responsive_cards = ResponsiveCards([input_card, message_card, voice_card, chatbox_card, ending_card])
+        self.favorite_reactions = FavoriteReactions(self.play_soundboard, self.edit_soundboard)
+        reactions_card = card('Favorite reactions', [self.favorite_reactions], 'reactions')
+        self.responsive_cards = ResponsiveCards([reactions_card, message_card, input_card, voice_card, chatbox_card, ending_card])
         main_layout.addWidget(self.responsive_cards)
         main_layout.addWidget(self.log_line_edit)
         main_layout.addWidget(self.progressbar)
@@ -574,7 +595,53 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         ######### Checking which speech provider to use #########
         if self.config["SPEECH"].getboolean("enabled"):
             self._check_selected_speech_provider()
+        self._seed_favorite_reactions()
+        self._refresh_favorites()
+        self._refresh_chatbox_preview()
         self.toggle_activate_button.setFocus()
+
+    def _seed_favorite_reactions(self):
+        if self.soundboard_load_failed or self.config['UI'].getboolean('reaction_starters_added', fallback=False):
+            return
+        speech = self.config['SPEECH']
+        language = speech.get('target_language')
+        if not any(p.get('favorite') for p in self.soundboard_presets):
+            for text in STARTERS.get(language, ())[:max(0, 32 - len(self.soundboard_presets))]:
+                self.soundboard_presets.append(dict(key='', text=text, language=language,
+                    output='Voice + chatbox', provider=speech.get('provider'), voice=speech.get('voice') or 'None', favorite=True))
+        self.config['UI']['reaction_starters_added'] = 'True'
+        self.config['SOUNDBOARD']['presets'] = json.dumps(self.soundboard_presets, ensure_ascii=False)
+        self.save_config()
+
+    def _refresh_favorites(self):
+        self.favorite_reactions.refresh(self.soundboard_presets, self.output_busy)
+
+    def _manual_chatbox_override(self):
+        return (self.custom_chatbox_text.toPlainText().strip() or None) if self.separate_chatbox.isChecked() else None
+
+    def _refresh_chatbox_preview(self, *args):
+        if not hasattr(self, 'chatbox_preview'):
+            return
+        self.editor_revision += 1
+        source = self.manual_text.toPlainText().strip()
+        override = self._manual_chatbox_override()
+        if not source and override is None:
+            self.chatbox_preview.set_text('')
+            return
+        if len(source) > 2500 or (override is not None and len(override) > 2500):
+            self.chatbox_preview.set_text('')
+            self.chatbox_preview.note.setText('Please split messages into at most 2500 characters before sending.')
+            return
+        rules = dict(self.chatbox_rules) if self.keyword_additions_checkbox.isChecked() else {}
+        corrected = correct_nicknames(source, self.corrections)
+        text = format_chatbox(corrected, corrected,
+                              self.font_combo.currentText(), rules, dict(self.config['ROLEPLAY']), override)
+        self.chatbox_preview.set_text(text)
+
+    def _show_output_chatbox_preview(self, source, text, revision):
+        if revision != self.editor_revision or (self.editor_dirty and self.manual_text.toPlainText().strip() != source.strip()):
+            return
+        self.chatbox_preview.set_text(text, final=True)
 
     def _save_collapsed(self, name, collapsed):
         self.config["UI"]["collapsed_" + name] = str(collapsed)
@@ -617,6 +684,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             return False
         self.preview_timer.stop()
         self.countdown_timer.stop()
+        self.custom_chatbox_text.setPlainText(entry.get('chatbox_override') or '')
+        self.separate_chatbox.setChecked(bool(entry.get('chatbox_override')))
         self.manual_text.setPlainText(entry["source"])
         self.cards_by_key["messages"].set_collapsed(False)
         self.manual_text.setFocus()
@@ -632,7 +701,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if not entry["result"]:
             return False
         return bool(self._start_output(entry["result"], self.manual_chatbox.isChecked(), manual=True,
-                                       already_translated=True, apply_ending=False))
+                                       already_translated=True, apply_ending=False,
+                                       chatbox_override=entry.get('chatbox_override')))
 
     def _init_translator(self):
         api_key = self.config["API"].get("deepl_api_key") or _config.DEEPL_API_KEY
@@ -671,6 +741,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def edit_roleplay(self):
         from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
         RoleplayDialog(self).exec()
+        self._refresh_chatbox_preview()
 
     def open_youtube(self):
         from vrchat_speech_assistant.youtube_dialog import YouTubeDialog
@@ -1450,6 +1521,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.pending_draft = True
         self.cards_by_key["messages"].set_collapsed(False)
         self.loading_editor = True
+        self.custom_chatbox_text.clear()
+        self.separate_chatbox.setChecked(False)
         self.manual_text.setPlainText(text)
         scroll = self.findChild(QtWidgets.QScrollArea)
         if scroll:
@@ -1474,8 +1547,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.edit_pending_message()
 
     def _editor_changed(self):
+        self._refresh_chatbox_preview()
         if not self.loading_editor:
-            if not self.manual_text.toPlainText().strip():
+            if not self.manual_text.toPlainText().strip() and not self._manual_chatbox_override():
                 self.editor_dirty = False
                 self.pending_draft = False
                 self.preview_timer.stop()
@@ -1502,7 +1576,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         accepted = self._start_output(
             self.manual_text.toPlainText(),
             self.config["CHATBOX"].getboolean("enabled") if pending else self.manual_chatbox.isChecked(),
-            manual=not pending)
+            manual=not pending, chatbox_override=self._manual_chatbox_override())
         if accepted:
             self.pending_draft = False
             self.editor_dirty = False
@@ -1533,6 +1607,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if len(text) > 2500:
             self.log_warning("Please split text into messages of at most 2500 characters.")
             return
+        if chatbox_override is not None and len(chatbox_override) > 2500:
+            self.log_warning('Please split Chatbox text into messages of at most 2500 characters.')
+            return
         if manual and (not self.speech_provider
                        or not self.config["SPEECH"].getboolean("enabled")
                        or self.config["SPEECH"].get("voice") == "None"):
@@ -1550,6 +1627,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 self.refresh_devices()
                 return
         config = {section: dict(self.config[section]) for section in ("SPEECH", "TRANSLATOR", "CHATBOX")}
+        preview_revision = -1 if output_override is not None and self.editor_dirty else self.editor_revision
         config["SPEECH"] = dict(speech_options)
         tags, corrections = dict(self.extra_tags), dict(self.corrections)
         pronunciations = dict(self.pronunciations)
@@ -1577,6 +1655,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         event = threading.Event()
         self.cancel_output = event
         self.output_busy = True
+        self.favorite_reactions.set_busy(True)
         self.output_requires_audio = bool(provider and requires_audio)
         self.speak_button.setEnabled(False)
         self.output_chatbox_active = send_chatbox if output_override is not None else None
@@ -1587,6 +1666,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                  "source": text, "result": "", "spoken": "", "status": "failed",
                  "language": config["SPEECH"]["target_language"], "provider": config["SPEECH"]["provider"],
                  "voice": config["SPEECH"]["voice"]}
+        if chatbox_override is not None:
+            entry['chatbox_override'] = chatbox_override
         def output():
             stage = "Nickname correction"
             try:
@@ -1602,18 +1683,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 check_cancelled()
                 result = add_random_ending(result, ending_text, ending_frequency)
                 spoken = spoken_delivery(correct_nicknames(result, pronunciations), tags)
-                displayed = chatbox_override if chatbox_override is not None else result
                 entry["result"], entry["spoken"] = result, spoken
                 captions = None
                 if send_chatbox:
                     stage = "Chatbox output"
-                    chatbox_text = decorate_chatbox(displayed, rules, corrected_source)
-                    if roleplay.get("chatbox_tag", "false").lower() == "true":
-                        tag = PERSONALITIES.get(roleplay.get("personality"), PERSONALITIES["Neutral"])[1]
-                        if tag:
-                            chatbox_text = tag + " " + chatbox_text
-                    from chatbox_osc.main import text_with_font
-                    chatbox_text = text_with_font(chatbox_text, config["CHATBOX"]["font"])
+                    chatbox_text = format_chatbox(result, corrected_source, config["CHATBOX"]["font"],
+                                                 rules, roleplay, chatbox_override)
+                    self.chatbox_preview_signal.emit(text, chatbox_text, preview_revision)
                     captions = LiveChatbox(chatbox_text, lambda page: write_chatbox(
                         client, page, font="Normal", chunk_length=0), spoken_text=spoken)
                     with stage_timer("OSC_delivery"):
@@ -1657,6 +1733,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
 
     def _finish_output(self):
         self.output_busy = False
+        self.favorite_reactions.set_busy(False)
         self.output_requires_audio = False
         self.speak_button.setEnabled(True)
         self._voice_activity(False, self.output_chatbox_active)
@@ -1720,6 +1797,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             except OSError:
                 record_failure("Save text rules", *sys.exc_info()[::2])
                 self.log_error("Could not save text rules. See diagnostic logs.")
+            self._refresh_chatbox_preview()
 
     @staticmethod
     def open_logs():

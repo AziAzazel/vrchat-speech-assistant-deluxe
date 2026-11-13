@@ -84,12 +84,12 @@ be tested with your downloaded model.
 
 ## Manual text, nickname corrections and diagnostic logs
 
-- Paste a ChatGPT answer or type into **Type or paste text to speak**, then click
-  **Speak pasted text**. Listening does not need to be enabled. Enable Speech and
+- Paste a ChatGPT answer or type into the main editor, then click
+  **Speak / send now**. Listening does not need to be enabled. Enable Speech and
   select a Windows voice, or configure AWS credentials for Polly. The selected
   voice and output device apply; pitch and whispered effects require Polly. When source and target languages differ, the existing
   DeepL translator applies too. Paste at most 2500 characters per message.
-- **Also send pasted text to VRChat Chatbox** independently controls manual text
+- **Send manual text to Chatbox** independently controls manual text
   delivery to OSC. It starts unchecked. Recognition keeps the existing Chatbox
   setting. Chatbox output preserves capitalization.
 - **Edit → Nickname corrections** edits a persistent phrase/replacement table.
@@ -111,6 +111,54 @@ recognition callbacks received during playback are ignored to reduce feedback.
 The app asks you to wait for current output before closing. Qt widget updates
 from recognition and OSC are delivered on the GUI thread. These changes address
 known thread/mixer hazards but do not establish the cause of every prior crash.
+
+## Chatbox page preview and separate display text
+
+The **Message preview and speech** card shows how the editor text will be divided
+into pages above your avatar. Use **← / →** to browse them; the counter shows the
+current page, total pages and use of VRChat's text limit. Emoji and styled fonts
+are counted using the same rules as actual output. Previewing does not send OSC
+or synthesize audio.
+
+The draft preview includes nickname corrections, selected font and configured
+chatbox additions/personality tag. Translation and random endings may change the
+final text: after processing, the preview updates to the final pages for that
+output. A late result does not overwrite a newer editor draft. It is a text/layout
+preview, not an exact rendering of the font available inside VRChat.
+
+To display something different from the spoken message, enable **Use separate
+Chatbox text (manual / edited draft)** and enter the desired text/emoji/action in
+the second editor. For example, speak “I can answer your question” while displaying
+`*patrzy podejrzliwie* 👀`. Enable **Send manual text to Chatbox** as well (edited
+recognition drafts use the main recognition Chatbox setting).
+
+Separate text is not spoken, translated, or extended by keyword/personality
+additions; the selected font still applies. Blank uses the usual spoken-message
+text. Each editor accepts up to 2500 characters for sending. Editing either pauses
+pending auto-send. The fields remain session-only; session history keeps separate
+text for Repeat, which still uses your current voice settings. A fresh recognized
+preview clears the previous separate action to avoid reusing it accidentally.
+
+## Favorite reactions on large buttons
+
+The **Favorite reactions** card provides large buttons for saved Soundboard
+entries. On first upgrade, if the selected output language is Polish or English,
+up to six starters are added once using the current provider/voice: **Tak / Nie /
+Chodź / Poczekaj / Nie rozumiem / Powtórz**, or their English equivalents. Existing
+rows remain intact; the combined Soundboard limit stays at 32. Other languages or
+a full Soundboard can use favorites selected manually.
+
+Open **Edit favorites / Soundboard…** and mark **Favorite ★** on any phrase or
+recording, then Save. Edit its text to change the button label; longer labels are
+shortened on the button with full text in the tooltip. A keyboard shortcut is
+optional. Uncheck Favorite to hide a button without deleting the entry.
+
+One click plays the saved row directly, preserving its language, voice, pitch,
+delivery, output route and separate chatbox text (or the recording's SRT). Starter
+rows use **Voice + chatbox**. Choose a matching installed/configured voice for each
+row; changing the main language later does not change saved reactions. Buttons
+are disabled during output; Stop remains available. Unsent editor text is retained.
+This category reflows with the window and can be collapsed like other settings.
 
 ## Live speech captions and long messages
 

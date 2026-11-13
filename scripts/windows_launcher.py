@@ -148,6 +148,23 @@ def smoke_test(report):
     window.show()
     app.processEvents()
     assert window.isVisible()
+    assert len(window.favorite_reactions.buttons) == 6
+    assert all(button.minimumHeight() >= 64 for button in window.favorite_reactions.buttons)
+    from vrchat_speech_assistant.live_chatbox import split_pages
+    from chatbox_osc.main import text_with_font
+    preview_source = "👀 hello " * 50
+    window.manual_text.setPlainText(preview_source)
+    expected_pages = split_pages(text_with_font(preview_source.strip(), window.font_combo.currentText()))
+    assert window.chatbox_preview.pages == expected_pages and len(expected_pages) > 1
+    window.chatbox_preview.next.click()
+    assert window.chatbox_preview.text.toPlainText() == expected_pages[1]
+    window.separate_chatbox.setChecked(True)
+    window.custom_chatbox_text.setPlainText("*looks suspicious* 👀")
+    assert window.chatbox_preview.pages == [text_with_font("*looks suspicious* 👀", window.font_combo.currentText())]
+    assert window.manual_text.toPlainText() == preview_source
+    window.custom_chatbox_text.clear()
+    window.separate_chatbox.setChecked(False)
+    window.manual_text.clear()
     assert window.config["SPEECH"]["provider"] == "Windows Speech"
     assert window.global_shortcuts_checkbox.isChecked()
     window.resize(1350, 800)
@@ -205,6 +222,7 @@ def smoke_test(report):
     soundboard.table.cellWidget(0, 7).setText("👀")
     soundboard.table.cellWidget(0, 8).setCurrentText("Whispered")
     soundboard.table.cellWidget(0, 9).setValue(50)
+    soundboard.table.cellWidget(0, 10).setChecked(True)
     soundboard.save()
     assert window._hotkey_edit_depth == 0 and window.global_hotkeys is not None
     assert window.global_hotkeys.ready_event.wait(5)
@@ -213,6 +231,8 @@ def smoke_test(report):
     assert window.soundboard_presets[0]["chatbox_text"] == "👀"
     assert window.soundboard_presets[0]["delivery"] == "Whispered"
     assert window.soundboard_presets[0]["pitch"] == 50
+    assert window.soundboard_presets[0]["favorite"]
+    assert window.favorite_reactions.buttons[0].text() == "ぽい"
     def edge_progress(stage):
         Path(report).write_text(json.dumps({"version": __version__, "stage": stage}), encoding="utf-8")
     edge_progress("youtube_edge_lookup")
@@ -258,7 +278,7 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
 
 
 def main():

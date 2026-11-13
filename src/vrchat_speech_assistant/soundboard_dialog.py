@@ -25,8 +25,8 @@ class SoundboardDialog(HotkeySettingsDialog):
             'Polly needs your AWS keys; Windows voices must be installed; Piper uses the configured model for that language.')
         note.setWordWrap(True)
         layout.addWidget(note)
-        self.table = QtWidgets.QTableWidget(0, 10)
-        self.table.setHorizontalHeaderLabels(['Shortcut', 'Speech / name', 'Language', 'Output', 'Provider', 'Voice', 'Recording / SRT', 'Chatbox text', 'Delivery', 'Pitch'])
+        self.table = QtWidgets.QTableWidget(0, 11)
+        self.table.setHorizontalHeaderLabels(['Shortcut', 'Speech / name', 'Language', 'Output', 'Provider', 'Voice', 'Recording / SRT', 'Chatbox text', 'Delivery', 'Pitch', 'Favorite'])
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
@@ -76,6 +76,10 @@ class SoundboardDialog(HotkeySettingsDialog):
         pitch.setValue(preset.get('pitch', 0))
         pitch.setToolTip('Pitch shift: -50 to +50%. 0 keeps the natural pitch. Requires a Polly Standard voice; can be combined with Whispered delivery.')
         self.table.setCellWidget(row, 9, pitch)
+        favorite = QtWidgets.QCheckBox('★')
+        favorite.setChecked(preset.get('favorite', False))
+        favorite.setToolTip('Show a large reaction button in the main window. No shortcut is required.')
+        self.table.setCellWidget(row, 10, favorite)
         language, output, provider, voice = [QtWidgets.QComboBox() for _ in range(4)]
         for column, combo, values, selected in [(2, language, DEEPL, preset['language']),
                                                (3, output, OUTPUTS, preset['output']),
@@ -103,6 +107,10 @@ class SoundboardDialog(HotkeySettingsDialog):
                 settings = self.window.config['SPEECH']
                 model = settings.get('piper_model_' + language.currentText()) or settings.get('piper_model')
                 voices = [Path(model).stem] if model else []
+            if preset['provider'] == provider.currentText() and preset['language'] == language.currentText() and preset['voice'] and preset['voice'] not in voices:
+                # Retain saved choices when a local backend/model is unavailable.
+                # Playback still validates availability; editing another row must not erase it.
+                voices = [*voices, preset['voice']]
             voice.addItems(voices)
             if selected in voices:
                 voice.setCurrentText(selected)
@@ -153,6 +161,7 @@ class SoundboardDialog(HotkeySettingsDialog):
         return {**(recording or {}),
                 'key': self.table.cellWidget(row, 0).keySequence().toString(QtGui.QKeySequence.PortableText),
                 'text': self.table.cellWidget(row, 1).text(),
+                'favorite': self.table.cellWidget(row, 10).isChecked(),
                 **{field: self.table.cellWidget(row, column).currentText()
                    for column, field in [(2, 'language'), (3, 'output'), (4, 'provider'), (5, 'voice')]},
                 **({} if recording else {'chatbox_text': self.table.cellWidget(row, 7).text(),
@@ -175,5 +184,6 @@ class SoundboardDialog(HotkeySettingsDialog):
         self.window.config['SOUNDBOARD']['presets'] = json.dumps(presets, ensure_ascii=False)
         self.window.save_config()
         self.window.soundboard_presets = presets
+        self.window._refresh_favorites()
         self.window._init_hotkeys()
         self.accept()

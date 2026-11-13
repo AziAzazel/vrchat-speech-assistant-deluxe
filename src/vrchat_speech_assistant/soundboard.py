@@ -26,6 +26,8 @@ def validate_presets(presets, other_keys=()):
             raise ValueError('Invalid soundboard phrase.')
         if not preset['text'].strip() or len(preset['text']) > 2500:
             raise ValueError('Each phrase needs 1–2500 characters.')
+        if type(preset.get('favorite', False)) is not bool:
+            raise ValueError('Favorite must be enabled or disabled.')
         recording = preset.get('kind', 'phrase') == 'audio'
         if preset.get('kind', 'phrase') not in ('phrase', 'audio'):
             raise ValueError('Unknown soundboard entry type.')

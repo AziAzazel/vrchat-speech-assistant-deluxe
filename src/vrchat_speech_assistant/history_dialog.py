@@ -66,7 +66,7 @@ class HistoryDialog(QtWidgets.QDialog):
         self.load_button.setEnabled(bool(entry))
         self.replay_button.setEnabled(bool(entry and entry["result"]))
         self.details.setPlainText("" if not entry else
-            f"Original: {entry['source']}\n\nResult / chatbox base: {entry['result']}\n\nSpoken pronunciation: {entry['spoken']}\n\nProvider: {entry['provider']} | Voice: {entry['voice']}")
+            f"Original: {entry['source']}\n\nResult / chatbox base: {entry['result']}\n\nSpoken pronunciation: {entry['spoken']}\n\nSeparate chatbox text: {entry.get('chatbox_override', 'Same as result')}\n\nProvider: {entry['provider']} | Voice: {entry['voice']}")
 
     def load(self):
         entry = self.selected()

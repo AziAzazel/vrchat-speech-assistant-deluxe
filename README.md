@@ -19,10 +19,10 @@ This is vibe-coded but works better than the original in my opinion. If there ar
 - Microphone recognition and manual text-to-speech, including pasted ChatGPT answers.
 - Local Windows desktop voices, optional external Piper, and Amazon Polly with optional fallback.
 - DeepL translation, nickname corrections and a speech-only pronunciation dictionary.
-- Chatbox text before speech starts, with readable pages during longer utterances.
+- Chatbox text before speech starts, with paged preview and separate display text.
 - Global hotkeys, editable transcript preview, language switching and Stop speaking.
 - Roleplay personalities/delivery, random endings, emoji rules and session history.
-- Soundboard phrases and WAV/MP3 recordings with optional timed SRT captions.
+- Large favorite-reaction buttons, Soundboard phrases and WAV/MP3 with timed SRT captions.
 - A dedicated YouTube player in Microsoft Edge, without chatbox captions or media export.
 
 Recognition still uses Google online. Windows/Piper synthesis can run locally;

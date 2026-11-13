@@ -1,20 +1,36 @@
-VRChat Speech Assistant Deluxe 1.25.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.26.0 release candidate 1
 
-Add a saved Pitch control to Roleplay → Soundboard phrases and hotkeys.
-- Range: -50% to +50%, with 0% for the natural voice pitch.
-- Each phrase saves its own pitch; the main Voice pitch slider is unchanged.
-- Combine pitch with Whispered delivery on a Polly Standard voice such as Mizuki.
-- Nonzero pitch requires Polly Standard. Windows/Piper and Polly Neural voices
-  require pitch 0; unsupported spoken combinations are rejected before output.
-- Old phrases default to pitch 0. Chatbox-only rows retain the value without
-  applying it, and recordings keep their original audio/SRT behavior.
-- Widen the Soundboard window to accommodate the additional control.
+Favorite reactions on large buttons
+- Mark Favorite ★ in Roleplay → Soundboard phrases and hotkeys, then Save.
+- Buttons retain each row's language, voice, route, whisper, pitch and independent
+  chatbox text; recordings retain their audio/SRT settings. A hotkey is optional.
+- Add up to six starter reactions once when the output language is Polish or
+  English, using the current provider/voice. Polish: Tak, Nie, Chodź, Poczekaj,
+  Nie rozumiem, Powtórz. Existing rows and the 32-entry limit are preserved.
+- Buttons reflow with the window, pause during output and preserve unsent drafts.
 
-Example: Ctrl+; | Speech: ぽい | Chatbox: 👀 | Japanese | Voice + chatbox |
-Amazon Polly | Mizuki | Whispered | Pitch: +20%.
+Chatbox page preview
+- Preview pages while typing, with Previous/Next, a page counter and VRChat limit.
+- Use the same font formatting and Unicode-aware splitter as actual OSC output.
+- Update to final pages after translation/random additions, without overwriting
+  a newer editor draft. Preview itself sends no text and performs no synthesis.
+
+Separate display text in the main editor
+- Enable Use separate Chatbox text and type an action/emoji in the second editor.
+  Enable Send manual text to Chatbox as well; edited recognition uses the main
+  Chatbox toggle. The voice can say a sentence while text shows *looks suspicious*.
+- Display text is not spoken, translated or decorated with keyword/personality
+  additions; the selected font applies. Blank uses the normal message.
+- Editing pauses auto-send. History Repeat retains separate text; a fresh
+  recognition preview clears the previous action to prevent accidental reuse.
+
+Also retain saved local voice choices when the backend/model is temporarily
+unavailable, so editing another Soundboard row does not erase those choices.
+Playback still checks availability.
 
 Download VRChatSpeechAssistantDeluxe.exe (Windows x64) and replace the old file.
-Existing settings survive. Validation covers -50/0/+50 across all output routes,
-invalid values and unsupported providers, saved/reopened controls, and packaged
-Windows GUI checks. No live Polly request is made by the automated tests;
-actual voice quality and VRChat reception require configured user hardware/services.
+Settings remain. Editor/action text and history remain session-only.
+Validation covers routing, Unicode pages, final/stale preview updates, auto-send
+pause, favorite persistence/capacity, busy state and draft preservation, plus
+packaged Windows controls. Real voice/device routing and VRChat font rendering
+still depend on the user's configured hardware/services.

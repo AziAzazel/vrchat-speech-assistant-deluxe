@@ -8,6 +8,14 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.26.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.26.0rc1) — Favorite reactions and chatbox preview
+
+- Add large, responsive favorite-reaction buttons backed by Soundboard entries, retaining their saved language, voice, route, whisper, pitch and separate chatbox text. Add starter reactions once for Polish/English when space is available, preserving existing entries and the 32-row limit.
+- Add a Favorite checkbox to Soundboard settings. Refresh buttons after Save and disable them during output to avoid accidental repeated playback. Keep unsent editor drafts intact.
+- Preview chatbox pages while editing, with navigation, page count and VRChat's text limit, using the same font formatting and Unicode-aware splitter as actual output. Show final pages after translation/additions; ignore late results after the user changes the draft.
+- Add optional separate display text for manual/edited drafts. Keep it out of speech and translation, pause auto-send on edits, and retain it in session-history repeat. Fresh recognition previews clear the previous action text.
+- Retain saved local voice choices when their backend/model is temporarily unavailable, allowing other Soundboard rows to be edited. Playback still checks voice availability.
+
 ### [1.25.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.25.0rc1) — Soundboard phrase pitch
 
 - Add a saved −50% to +50% Pitch control per Soundboard phrase, independent of the main pitch slider. Existing phrases default to 0%.
