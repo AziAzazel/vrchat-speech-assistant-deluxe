@@ -48,7 +48,13 @@ class VirtualMicrophone:
         self.owned.extend(created)
 
     def remove(self):
-        modules = {str(m['index']): m for m in json.loads(pulse('-f', 'json', 'list', 'modules'))}
+        # Older pactl JSON omits module indices. The stable short format includes
+        # ID, name and arguments on both PulseAudio and PipeWire-Pulse.
+        modules = {}
+        for line in pulse('list', 'short', 'modules').splitlines():
+            fields = line.split('\t')
+            if len(fields) >= 3 and fields[0].isdigit():
+                modules[fields[0]] = {'name': fields[1], 'argument': fields[2]}
         for index, name, argument in reversed(self.owned):
             module = modules.get(index)
             if module and module.get('name') == name and module.get('argument') == argument:

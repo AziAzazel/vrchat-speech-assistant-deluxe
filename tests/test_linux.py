@@ -11,6 +11,8 @@ def test_virtual_microphone_transaction_reuse_and_cleanup(monkeypatch):
     modules, sinks, sources, calls = [], [], [], []
     def pulse(*args):
         calls.append(args)
+        if args == ('list', 'short', 'modules'):
+            return '\n'.join(f"{m['index']}\t{m['name']}\t{m['argument']}\tn/a" for m in modules)
         if args[:3] == ('-f', 'json', 'list'):
             return json.dumps({'modules': modules, 'sinks': sinks, 'sources': sources}[args[3]])
         if args[0] == 'load-module':
@@ -38,6 +40,8 @@ def test_virtual_microphone_rolls_back_failed_source(monkeypatch):
     calls = []
     def pulse(*args):
         calls.append(args)
+        if args == ('list', 'short', 'modules'):
+            return f'4\tmodule-null-sink\tsink_name={linux_audio.SINK} sink_properties=device.description={linux_audio.DESCRIPTION}\tn/a'
         if args[:3] == ('-f', 'json', 'list'):
             return json.dumps([{'index': 4, 'name': 'module-null-sink',
                 'argument': f'sink_name={linux_audio.SINK} sink_properties=device.description={linux_audio.DESCRIPTION}'}] if args[3] == 'modules' else [])
@@ -53,7 +57,7 @@ def test_virtual_microphone_rolls_back_failed_source(monkeypatch):
 
 
 def test_virtual_microphone_never_unloads_replaced_module(monkeypatch):
-    pulse = Mock(return_value=json.dumps([{'index': 4, 'name': 'module-null-sink', 'argument': 'sink_name=someone_else'}]))
+    pulse = Mock(return_value='4\tmodule-null-sink\tsink_name=someone_else\tn/a')
     monkeypatch.setattr(linux_audio, 'pulse', pulse)
     route = linux_audio.VirtualMicrophone()
     route.owned = [('4', 'module-null-sink', 'our arguments')]
