@@ -8,6 +8,12 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.28.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.28.0rc1) — Styled and cleaned SRT lyrics
+
+- Apply the selected Chatbox font/style (including Magic and UpsideDown) to SRT captions on Windows and Linux. Snapshot the selection when starting a recording and format joined overlapping captions before enforcing VRChat's UTF-16 limit.
+- Ignore balanced square-bracket stage directions, including nested/multiline descriptions, and remove `#` characters after decoding markup/entities. Skip captions left empty without changing visible cue timestamps.
+- Show 🎵 from playback start until the first visible lyric, including an initial annotation-only section. Later subtitle gaps remain blank; offset, rate limiting and Stop cleanup remain in effect.
+
 ### [1.27.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.27.0rc1) — Native Linux / Bazzite preview
 
 - Add a native portable Linux x86-64 build from the same source/version as Windows. Publish both platforms only after their tests and packaged smoke checks pass.

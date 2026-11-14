@@ -66,7 +66,7 @@ def smoke_test(report):
         audio.setframerate(22050)
         audio.writeframes(b"\0\0" * 5512)
     subtitles = media_wav.with_suffix(".srt")
-    subtitles.write_text("1\n00:00:00,000 --> 00:00:10,000\nTest ポイ\n", encoding="utf-8")
+    subtitles.write_text("1\n00:00:00,000 --> 00:00:10,000\n[Music] #Test ポイ#\n", encoding="utf-8")
     class CaptionProbe:
         def __init__(self):
             self.messages = []
@@ -81,7 +81,7 @@ def smoke_test(report):
             def play_media():
                 try:
                     with output_scope(threading.Event()):
-                        MediaSpeech(recording, str(subtitles), client=probe).speech("", "", None)
+                        MediaSpeech(recording, str(subtitles), client=probe, font="Magic").speech("", "", None)
                 except Exception as error:
                     playback_errors.append(error)
             playback_thread = threading.Thread(target=play_media, daemon=True)
@@ -90,7 +90,8 @@ def smoke_test(report):
             assert not playback_thread.is_alive(), "Worker audio playback did not finish"
             if playback_errors:
                 raise playback_errors[0]
-            assert any(args[0] == "Test ポイ" for _, args in probe.messages), "No timed subtitle"
+            from chatbox_osc.main import text_with_font
+            assert any(args[0] == text_with_font("Test ポイ", "Magic") for _, args in probe.messages), "No clean styled timed subtitle"
             assert probe.messages[-1][1][0] == "", "Subtitle was not cleared"
     finally:
         if previous_driver is None:

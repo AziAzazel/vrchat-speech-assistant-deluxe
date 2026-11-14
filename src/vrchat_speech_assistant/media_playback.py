@@ -6,6 +6,8 @@ import re
 import time
 
 from vrchat_speech_assistant.output_control import check_cancelled
+from vrchat_speech_assistant.live_chatbox import MAX_UNITS, utf16_units
+from chatbox_osc.main import text_with_font
 
 CAPTION_INTERVAL = 1.5
 _TIMESTAMP = r'(\d{1,3}):([0-5]\d):([0-5]\d)[,.](\d{3})'
@@ -19,8 +21,43 @@ class Cue:
     text: str
 
 
+def clean_subtitle(text):
+    """Remove balanced bracketed stage directions and literal music markers."""
+    parts, depth, last, start = [], 0, 0, 0
+    for index, character in enumerate(text):
+        if character == '[':
+            if depth == 0:
+                start = index
+            depth += 1
+        elif character == ']' and depth:
+            depth -= 1
+            if depth == 0:
+                parts.extend((text[last:start], ' '))
+                last = index + 1
+    parts.append(text[last:])
+    return ' '.join(''.join(parts).replace('#', '').split())
+
+
+def format_caption(text, font='Normal'):
+    if not text:
+        return ''
+    styled = text_with_font(text, font)
+    if utf16_units(styled) <= MAX_UNITS:
+        return styled
+    # Styled letters and emoji can consume two VRChat units per character.
+    characters, size = [], 0
+    for character in styled:
+        units = 2 if ord(character) > 0xFFFF else 1
+        if size + units > MAX_UNITS - 1:
+            break
+        characters.append(character)
+        size += units
+    return ''.join(characters) + '…'
+
+
 def parse_srt(text):
     cues = []
+    valid_blocks = 0
     for block in re.split(r'\n\s*\n', text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n').strip()):
         lines = block.splitlines()
         if not lines:
@@ -37,11 +74,12 @@ def parse_srt(text):
         start, end = seconds(values[:4]), seconds(values[4:])
         if end <= start:
             raise ValueError('SRT subtitle end must follow its start.')
+        valid_blocks += 1
         content = html.unescape(re.sub(r'</?(?:b|i|u|font)\b[^>]*>', '', ' '.join(lines[1:]), flags=re.IGNORECASE))
-        content = ' '.join(content.split())
+        content = clean_subtitle(content)
         if content:
             cues.append(Cue(start, end, content))
-    if not cues:
+    if not cues and not valid_blocks:
         raise ValueError('The SRT file contains no subtitles.')
     return sorted(cues, key=lambda cue: (cue.start, cue.end))
 
@@ -61,16 +99,19 @@ def load_srt(path):
     return parse_srt(text)
 
 
-def caption_at(cues, position):
+def caption_at(cues, position, font='Normal'):
     # Multiple overlapping cues share one chatbox update.
     text = ' '.join(cue.text for cue in cues if cue.start <= position < cue.end)
-    return text if len(text) <= 144 else text[:143] + '…'
+    return format_caption(text, font)
 
 
 class CaptionTimeline:
     """Advance through cue boundaries instead of rescanning every cue at 50 Hz."""
-    def __init__(self, cues):
+    def __init__(self, cues, font='Normal', intro=False):
         self.cues = tuple(cues)
+        self.font = font
+        self.intro = intro
+        self.first_caption = min((cue.start for cue in self.cues if cue.text), default=float('inf'))
         self.events = sorted([(cue.start, 1, index) for index, cue in enumerate(self.cues)] +
                              [(cue.end, 0, index) for index, cue in enumerate(self.cues)])
         self._cursor = 0
@@ -95,15 +136,9 @@ class CaptionTimeline:
             changed = True
         if changed:
             # Match caption_at's cue order, including overlapping captions.
-            chunks, size = [], 0
-            for index in sorted(self._active):
-                chunks.append(self.cues[index].text)
-                size += len(self.cues[index].text) + 1
-                if size > 145:
-                    break
-            text = ' '.join(chunks)
-            self._text = text if len(text) <= 144 else text[:143] + '…'
-        return self._text
+            text = ' '.join(self.cues[index].text for index in sorted(self._active))
+            self._text = format_caption(text, self.font)
+        return '🎵' if self.intro and position < self.first_caption else self._text
 
 
 class CaptionSender:
@@ -130,19 +165,20 @@ class CaptionSender:
 
 
 class MediaSpeech:
-    def __init__(self, audio, subtitle='', offset_ms=0, output='Voice + chatbox', client=None, cues=None):
+    def __init__(self, audio, subtitle='', offset_ms=0, output='Voice + chatbox', client=None, cues=None, font='Normal'):
         self.audio, self.subtitle = Path(audio), subtitle
         self.offset = offset_ms/1000
         self.play_audio = output != 'Chatbox only'
         self.captions = output != 'Voice only' and bool(subtitle)
         self.client = client
         self._cues = tuple(cues) if cues is not None else None
+        self.font = font
 
     def speech(self, text, voice, device, tags=None):
         import pygame.mixer
         cues = (self._cues if self._cues is not None else load_srt(self.subtitle)) if self.captions else []
         sender = CaptionSender(self.client) if self.captions else None
-        timeline = CaptionTimeline(cues) if sender else None
+        timeline = CaptionTimeline(cues, self.font, intro=True) if sender else None
         initialized = False
         try:
             check_cancelled()

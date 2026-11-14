@@ -462,6 +462,14 @@ closing the dialog. This prevents existing bindings from swallowing recorded key
 or accidentally playing a phrase. Other applications can still reserve a key;
 registration conflicts remain visible after settings close.
 
+SRT captions use the **VRChat Chatbox font** selected when the recording starts,
+including Magic and UpsideDown. Square-bracket descriptions such as `[Music]` or
+`[whispering]` are removed, including nested descriptions, and `#` characters are
+ignored. Annotation-only cues are skipped; the remaining timestamps stay intact.
+The player shows **🎵 before the first visible lyric**, then uses the SRT text;
+later gaps are blank. Captions retain the existing update-rate limit and are
+cleared on Stop. Styled text is limited to VRChat's UTF-16 budget after formatting.
+
 ## YouTube player without chatbox captions
 
 Open **Roleplay → YouTube player (no captions)**, paste a YouTube video link and

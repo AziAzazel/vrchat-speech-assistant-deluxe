@@ -1278,7 +1278,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         speech = dict(self.config["SPEECH"])
         speech.update(provider="Audio file", voice=audio.name, target_language=preset["language"])
         backend = MediaSpeech(str(audio), preset.get("subtitle", ""), preset.get("offset_ms", 0),
-                              preset["output"], self.osc_client, cues=cues)
+                              preset["output"], self.osc_client, cues=cues,
+                              font=self.config['CHATBOX'].get('font', 'Normal'))
         if self.pending_draft:
             self.edit_pending_message(focus=False)
         return self._start_output(preset["text"], False, already_translated=True, apply_ending=False,

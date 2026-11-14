@@ -893,10 +893,14 @@ def test_recording_entry_preserves_paths_and_routes_no_cloud(gui, window, monkey
     cloud, start = Mock(), Mock(return_value=True)
     monkeypatch.setattr(main, 'Polly', cloud)
     monkeypatch.setattr(window, '_start_output', start)
+    original_font = window.font_combo.currentText()
+    window.font_combo.setCurrentText('UpsideDown')
     assert window.play_soundboard(preset)
     cloud.assert_not_called()
+    assert start.call_args.kwargs['output_override'][1].font == 'UpsideDown'
     assert start.call_args.kwargs['requires_audio']
     assert start.call_args.args[1] is False  # Subtitles are scheduled by the media backend.
+    window.font_combo.setCurrentText(original_font)
     dialog.reject()
 
 
