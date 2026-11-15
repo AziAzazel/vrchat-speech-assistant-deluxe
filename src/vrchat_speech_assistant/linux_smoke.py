@@ -88,6 +88,19 @@ def smoke_test(report_path):
             app.processEvents()
             assert window.responsive_cards.columns == columns
         checks['gui_and_shared_controls'] = 'passed'
+        from vrchat_speech_assistant.audio_export import read_generated_audio, save_generated_audio
+        from vrchat_speech_assistant.history_dialog import HistoryDialog
+        clip = read_generated_audio(tone)
+        window._record_history(dict(id=1, time='00:00:00', status='completed', language='English',
+                                    source='Export', result='Export', spoken='Export', provider='Piper', voice='Local', audio=clip))
+        history = HistoryDialog(window)
+        assert history.save_audio_button.isEnabled()
+        exported = folder/'export.wav'
+        save_generated_audio(history.selected()['audio'], exported)
+        assert exported.read_bytes() == tone.read_bytes()
+        history.close()
+        window.clear_history()
+        checks['audio_export'] = 'passed'
         stage('local_action_control')
         command = [sys.executable]
         if not getattr(sys, 'frozen', False):

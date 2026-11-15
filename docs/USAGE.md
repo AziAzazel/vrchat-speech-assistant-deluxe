@@ -338,6 +338,14 @@ mean every output was delivered: one output may already have arrived when the ot
 - **Load original into editor** lets you correct and send again using current
   translation/settings. It refuses to replace an unsent draft; clear or send that
   draft first.
+- **Save speech audio…** saves the last generated speech from the row marked
+  **Available**, without synthesis or another Polly request. Windows Speech and
+  Piper export WAV; Polly exports OGG. Delivery settings are already part of the
+  file; there is no MP3 conversion. The complete generated clip remains available
+  even after Stop or playback failure. Only one clip (up to 32 MiB) is retained in
+  memory. New generated audio replaces it; text-only attempts keep it. Clear
+  history, eviction of its row from the last 50 attempts, or closing the app removes
+  it. Save before generating another utterance if you want to keep both.
 - **Repeat result** speaks the selected result with current voice, pronunciation
   and delivery settings. It skips translation, nickname correction and another
   ending lottery, so the existing ending is not duplicated. Current chatbox

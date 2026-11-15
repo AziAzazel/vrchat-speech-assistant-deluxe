@@ -9,7 +9,7 @@ import wave
 
 from vrchat_speech_assistant.windows_speech import LocalSynthesisError
 from vrchat_speech_assistant.platform_support import external_process_env
-from vrchat_speech_assistant.output_control import run_process, OutputCancelled
+from vrchat_speech_assistant.output_control import run_process, OutputCancelled, report_generated_audio
 
 
 class PiperSpeech:
@@ -53,4 +53,5 @@ class PiperSpeech:
         with tempfile.TemporaryDirectory(prefix="vrcpiper-") as directory:
             path = Path(directory) / "speech.wav"
             self.render(text, path, rate=(extra_tags or {}).get("rate", 100))
+            report_generated_audio(path)
             read_ogg_file(str(path), output_device_name)

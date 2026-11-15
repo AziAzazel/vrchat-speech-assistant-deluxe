@@ -8,6 +8,12 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.29.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.29.0rc1) — Export generated speech from history
+
+- Add **Save speech audio…** to session history. Select the row marked **Available** to save the last generated speech, with no new synthesis or cloud request.
+- Keep the original WAV (Windows Speech/Piper) or OGG (Polly), including generated delivery settings. Retain audio before playback so Stop or a playback failure does not discard it.
+- Retain one clip in memory, up to 32 MiB. New synthesized audio replaces the previous export; text-only attempts keep it. Clearing history, eviction of its row, or closing the app removes it. Export does not convert to MP3.
+
 ### [1.28.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.28.0rc1) — Styled and cleaned SRT lyrics
 
 - Apply the selected Chatbox font/style (including Magic and UpsideDown) to SRT captions on Windows and Linux. Snapshot the selection when starting a recording and format joined overlapping captions before enforcing VRChat's UTF-16 limit.

@@ -1,23 +1,16 @@
-VRChat Speech Assistant Deluxe 1.28.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.29.0 release candidate 1
 
-SRT lyrics now use the selected VRChat Chatbox font/style, including Magic and
-UpsideDown. The selected style is captured when a recording starts and applied
-to each full caption before enforcing the Unicode-aware VRChat text limit.
+Save the last generated speech directly from session history: select the row
+marked Available and click Save speech audio…. Export uses the original audio
+without another synthesis or cloud request, preserving generated delivery settings.
 
-Ignore stage directions inside balanced square brackets, including nested or
-multiline descriptions, and remove # characters. Empty cleaned captions are
-skipped; remaining lyric timestamps and subtitle offset are unchanged.
+Windows Speech/Piper save WAV; Polly saves OGG. No MP3 conversion is performed.
+The complete generated file remains available even after Stop or playback failure.
+One clip up to 32 MiB is kept in memory. New generated audio replaces it; text-only
+attempts keep it. Clear history, eviction of its row, or closing the app removes it.
 
-Show 🎵 from playback start until the first visible lyric, including introductory
-SRT entries containing only [Music] or other ignored descriptions. Later gaps
-stay blank. Stop and playback completion clear the note/caption. Existing caption
-rate limiting remains in effect, including very short introductions.
-
-Windows and Linux share these changes. Download the Windows .exe or Linux x86-64
-.tar.gz and replace the old application files; settings remain in the user folder.
-Select your desired Chatbox font before starting the recording.
-
-Validation covers Magic/UpsideDown, overlapping cues, styled/emoji UTF-16 limits,
-markup/entity cleaning, intro/offset/rewind, playback routes and cancellation.
-Packaged Windows checks play WAV/MP3 with cleaned Magic captions; Linux keeps its
-real virtual-microphone, GUI and OSC checks. VRChat reception requires user testing.
+Available for Windows and Linux. Replace your application files; settings remain
+in the user folder. Tests cover original bytes, temporary-file cleanup, bounded
+retention, cancellation, history selection, export without resynthesis and atomic
+save failures. Packaged checks verify WAV export and the history control on both
+platforms; Windows also synthesizes a real SAPI clip before exporting it.

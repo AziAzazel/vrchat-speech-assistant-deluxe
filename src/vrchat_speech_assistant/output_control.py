@@ -45,6 +45,22 @@ def playback_callback():
     return getattr(_state, 'playback', None)
 
 
+@contextmanager
+def generated_audio_scope(callback):
+    previous = getattr(_state, 'generated_audio', None)
+    _state.generated_audio = callback
+    try:
+        yield
+    finally:
+        _state.generated_audio = previous
+
+
+def report_generated_audio(path):
+    callback = getattr(_state, 'generated_audio', None)
+    if callback is not None:
+        callback(path)
+
+
 class CancellableOSC:
     def __init__(self, client):
         self.client = client

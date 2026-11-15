@@ -7,7 +7,7 @@ import time
 from xml.sax.saxutils import escape
 
 from vrchat_speech_assistant.diagnostics import DATA_DIR
-from vrchat_speech_assistant.output_control import check_cancelled, playback_callback
+from vrchat_speech_assistant.output_control import check_cancelled, playback_callback, report_generated_audio
 from vrchat_speech_assistant.languages import POLLY_VOICES_ENGINE
 
 VOICES_PATH = DATA_DIR / "voices"
@@ -105,6 +105,7 @@ class Polly:
             with contextlib.closing(response["AudioStream"]) as stream:
                 temporary.write_bytes(stream.read())
             temporary.replace(filepath)
+        report_generated_audio(filepath)
         read_ogg_file(str(filepath), output_device_name)
 
     def test(self) -> bool:

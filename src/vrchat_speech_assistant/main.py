@@ -19,6 +19,8 @@ from chatbox_osc import FONTS, write_chatbox
 from vrchat_speech_assistant.audio_devices import get_device_snapshot
 from vrchat_speech_assistant.listener import BackgroundListener
 from vrchat_speech_assistant.output_control import output_scope, playback_scope, check_cancelled, OutputCancelled, CancellableOSC
+from vrchat_speech_assistant.output_control import generated_audio_scope
+from vrchat_speech_assistant.audio_export import read_generated_audio, AudioRetentionError
 from vrchat_speech_assistant.live_chatbox import LiveChatbox, ChatboxOutputError
 from vrchat_speech_assistant.chatbox_preview import ChatboxPreview, format_chatbox
 from vrchat_speech_assistant.favorite_reactions import FavoriteReactions, STARTERS
@@ -690,6 +692,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.save_config()
 
     def _record_history(self, entry):
+        if entry.get('audio') is not None:
+            for previous in self.history:
+                previous.pop('audio', None)
         self.history.append(dict(entry))
         self.history = self.history[-50:]
         self.history_changed.emit()
@@ -1709,6 +1714,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                  "voice": config["SPEECH"]["voice"]}
         if chatbox_override is not None:
             entry['chatbox_override'] = chatbox_override
+        def retain_audio(path):
+            try:
+                entry['audio'] = read_generated_audio(path)
+            except (OSError, AudioRetentionError):
+                entry['audio_note'] = 'Audio could not be retained (file unavailable or over the 32 MB limit).'
+                record_failure('Retain generated speech audio', *sys.exc_info()[::2])
         def output():
             stage = "Nickname correction"
             try:
@@ -1739,7 +1750,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 speaking = bool(provider and speech["voice"] != "None")
                 if speaking:
                     stage = "Synthesis/audio playback"
-                    with stage_timer("synthesis_and_playback"), playback_scope(captions.progress if captions and len(captions.pages) > 1 else None):
+                    with stage_timer("synthesis_and_playback"), playback_scope(captions.progress if captions and len(captions.pages) > 1 else None), generated_audio_scope(retain_audio):
                         provider.speech(spoken, speech["voice"], speech["output_device"], tags)
                 check_cancelled()
                 if captions:

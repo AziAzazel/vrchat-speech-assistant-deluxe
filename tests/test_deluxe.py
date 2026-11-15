@@ -1212,3 +1212,70 @@ def test_local_control_callback_does_not_return_invalid_osc_reply(gui, window):
     assert handler.callback('/roleplay', 'stop_speaking') is None
     gui[0].processEvents()
     assert window.draft_status.text().startswith('Stopped.')
+
+
+@pytest.mark.parametrize('playback_error', [None, 'cancelled', 'failed'])
+def test_history_exports_generated_audio_without_resynthesis(gui, window, monkeypatch, tmp_path, playback_error):
+    from vrchat_speech_assistant.output_control import report_generated_audio, OutputCancelled
+    from vrchat_speech_assistant.history_dialog import HistoryDialog
+    from PySide6 import QtWidgets, QtCore
+    import wave
+    app, main = gui
+    window.config['SPEECH'].update(enabled='True', provider='Amazon Polly', voice='Mizuki')
+    window.manual_chatbox.setChecked(False)
+    source = tmp_path / 'temporary.wav'
+    with wave.open(str(source), 'wb') as audio:
+        audio.setparams((1, 2, 22050, 0, 'NONE', 'not compressed'))
+        audio.writeframes(b'\0\0' * 100)
+    original = source.read_bytes()
+    def speak(*args):
+        report_generated_audio(source)
+        if playback_error == 'cancelled':
+            raise OutputCancelled()
+        if playback_error == 'failed':
+            raise OSError('playback failed')
+    window.speech_provider.speech.side_effect = speak
+    window.manual_text.setPlainText('Save my speech')
+    window.speak_manual_text()
+    wait_output(app, window)
+    source.unlink()
+    entry = window.history[-1]
+    assert entry['status'] == (playback_error or 'completed')
+    dialog = HistoryDialog(window)
+    assert dialog.save_audio_button.isEnabled()
+    assert dialog.table.item(0, 0).data(QtCore.Qt.UserRole) == entry['id']
+    target = tmp_path / 'saved.wav'
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'exec', lambda self: QtWidgets.QDialog.Accepted)
+    monkeypatch.setattr(QtWidgets.QFileDialog, 'selectedFiles', lambda self: [str(target)])
+    dialog.save_audio_button.click()
+    assert target.read_bytes() == original
+    window.speech_provider.speech.assert_called_once()
+    # Text-only attempts do not discard the last synthesized clip.
+    next_entry = dict(entry, id=entry['id'] + 1)
+    next_entry.pop('audio')
+    window._record_history(next_entry)
+    assert 'audio' in entry
+    # A new synthesized clip replaces the previous export, even in an open dialog.
+    window._record_history(dict(next_entry, id=entry['id'] + 2, audio=entry['audio']))
+    assert 'audio' not in entry
+    dialog.refresh()
+    dialog.table.selectRow(2)
+    assert not dialog.save_audio_button.isEnabled()
+    window.clear_history()
+    dialog.refresh()
+    assert not dialog.save_audio_button.isEnabled()
+    dialog.close()
+
+
+def test_unavailable_audio_export_does_not_fail_speech(gui, window, tmp_path):
+    from vrchat_speech_assistant.output_control import report_generated_audio
+    app, main = gui
+    window.config['SPEECH'].update(enabled='True', provider='Amazon Polly', voice='Mizuki')
+    window.manual_chatbox.setChecked(False)
+    window.speech_provider.speech.side_effect = lambda *args: report_generated_audio(tmp_path / 'missing.wav')
+    window.manual_text.setPlainText('Keep speaking if export is unavailable')
+    window.speak_manual_text()
+    wait_output(app, window)
+    assert window.history[-1]['status'] == 'completed'
+    assert 'audio' not in window.history[-1]
+    assert window.history[-1]['audio_note']

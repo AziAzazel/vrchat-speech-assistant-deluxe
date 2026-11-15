@@ -75,6 +75,15 @@ def smoke_test(report):
     previous_driver = os.environ.get("SDL_AUDIODRIVER")
     os.environ["SDL_AUDIODRIVER"] = "dummy"
     try:
+        from vrchat_speech_assistant.output_control import generated_audio_scope
+        from vrchat_speech_assistant.audio_export import read_generated_audio, save_generated_audio
+        exported_clips = []
+        with generated_audio_scope(lambda source: exported_clips.append(read_generated_audio(source))):
+            speech.speech('Audio export verification.', next(iter(speech.voices)), None, {'rate': 85})
+        assert exported_clips and exported_clips[0].extension == '.wav'
+        exported_path = media_wav.with_name('export.wav')
+        save_generated_audio(exported_clips[0], exported_path)
+        assert exported_path.read_bytes() == exported_clips[0].data
         for recording in (media_wav, RESOURCES_PATH / "playback-smoke.mp3"):
             probe = CaptionProbe()
             playback_errors = []
@@ -197,8 +206,9 @@ def smoke_test(report):
     assert not window.config["UI"].getboolean("collapsed_endings")
     window._record_history({"id": 1, "time": "00:00:00", "status": "completed", "language": "English",
                             "source": "Hello", "result": "Hello, poi.", "spoken": "Hello, poi.",
-                            "provider": "Windows Speech", "voice": "Local"})
+                            "provider": "Windows Speech", "voice": "Local", "audio": exported_clips[0]})
     history = HistoryDialog(window)
+    assert history.save_audio_button.isEnabled()
     assert history.table.rowCount() == 1
     assert history.selected()["result"] == "Hello, poi."
     history.close()
@@ -279,7 +289,7 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
 
 
 def main():
