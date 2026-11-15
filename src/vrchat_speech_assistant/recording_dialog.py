@@ -1,5 +1,6 @@
 """Local audio and optional subtitle file selection."""
 from pathlib import Path
+from vrchat_speech_assistant.wheel_controls import NoWheelComboBox
 from PySide6 import QtWidgets, QtGui
 from vrchat_speech_assistant.shortcut_editor import HotkeySettingsDialog, ShortcutEdit
 from vrchat_speech_assistant.soundboard import OUTPUTS, validate_presets
@@ -31,7 +32,7 @@ class RecordingDialog(HotkeySettingsDialog):
         self.offset.setSuffix(' ms')
         self.offset.setValue(self.original.get('offset_ms', 0))
         layout.addRow('Subtitle offset (+ delays, − advances):', self.offset)
-        self.output = QtWidgets.QComboBox()
+        self.output = NoWheelComboBox()
         self.output.addItems(OUTPUTS)
         self.output.setCurrentText(self.original['output'])
         layout.addRow('Output (voice = recording):', self.output)

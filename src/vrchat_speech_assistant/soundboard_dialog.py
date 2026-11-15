@@ -1,6 +1,7 @@
 """Editable phrases with explicit language, voice and destination."""
 import json
 from pathlib import Path
+from vrchat_speech_assistant.wheel_controls import NoWheelComboBox
 from PySide6 import QtGui, QtWidgets
 from vrchat_speech_assistant.shortcut_editor import ShortcutEdit, HotkeySettingsDialog
 from vrchat_speech_assistant.languages import DEEPL, VOICES
@@ -65,7 +66,7 @@ class SoundboardDialog(HotkeySettingsDialog):
         chatbox.setMaxLength(2500)
         chatbox.setPlaceholderText('Same as speech')
         chatbox.setToolTip('Text/emoji shown in VRChat, independent of the spoken phrase. Blank uses the spoken text. Recordings use SRT instead.')
-        delivery = QtWidgets.QComboBox()
+        delivery = NoWheelComboBox()
         delivery.addItems(DELIVERIES)
         delivery.setCurrentText(preset.get('delivery', 'Normal'))
         delivery.setToolTip('Whispered: Amazon Polly Standard only (Japanese: Mizuki).')
@@ -81,7 +82,7 @@ class SoundboardDialog(HotkeySettingsDialog):
         favorite.setChecked(preset.get('favorite', False))
         favorite.setToolTip('Show a large reaction button in the main window. No shortcut is required.')
         self.table.setCellWidget(row, 10, favorite)
-        language, output, provider, voice = [QtWidgets.QComboBox() for _ in range(4)]
+        language, output, provider, voice = [NoWheelComboBox() for _ in range(4)]
         for column, combo, values, selected in [(2, language, DEEPL, preset['language']),
                                                (3, output, OUTPUTS, preset['output']),
                                                (4, provider, PROVIDERS + (('Audio file',) if recording else ()), preset['provider'])]:

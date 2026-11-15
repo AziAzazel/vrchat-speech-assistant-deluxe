@@ -158,6 +158,18 @@ def smoke_test(report):
     window.show()
     app.processEvents()
     assert window.isVisible()
+    scroll = window.findChild(QtWidgets.QScrollArea)
+    window.log_warning('Build verification notice.')
+    window.log_info('Build verification complete.')
+    assert 'Build verification notice.' in window.status_bar.issue_label.text()
+    for position in (scroll.verticalScrollBar().maximum(), 0):
+        scroll.verticalScrollBar().setValue(position)
+        app.processEvents()
+        assert window.status_bar.isVisible() and not scroll.isAncestorOf(window.status_bar)
+        assert window.status_bar.geometry().bottom() <= window.rect().bottom()
+        assert window.status_bar.geometry().top() > scroll.geometry().bottom()
+    window.status_bar.dismiss_button.click()
+    assert not window.status_bar.issues
     assert len(window.favorite_reactions.buttons) == 6
     assert all(button.minimumHeight() >= 64 for button in window.favorite_reactions.buttons)
     from vrchat_speech_assistant.live_chatbox import split_pages
@@ -289,7 +301,7 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "persistent_status": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
 
 
 def main():

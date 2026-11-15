@@ -1,16 +1,20 @@
-VRChat Speech Assistant Deluxe 1.29.0 release candidate 1
+VRChat Speech Assistant Deluxe 1.30.0 release candidate 1
 
-Save the last generated speech directly from session history: select the row
-marked Available and click Save speech audio…. Export uses the original audio
-without another synthesis or cloud request, preserving generated delivery settings.
+A persistent bottom status bar stays visible while scrolling through settings.
+See listening/off, recognition, auto-send countdown, draft pauses, output and
+cancellation, device scans and microphone recovery from one place.
 
-Windows Speech/Piper save WAV; Polly saves OGG. No MP3 conversion is performed.
-The complete generated file remains available even after Stop or playback failure.
-One clip up to 32 MiB is kept in memory. New generated audio replaces it; text-only
-attempts keep it. Clear history, eviction of its row, or closing the app removes it.
+Warnings and errors remain until dismissed. Informational messages do not hide
+them. Errors take priority; hover for full notice details. Dismissal acknowledges
+a notice rather than fixing the cause. Notices are session-only.
 
-Available for Windows and Linux. Replace your application files; settings remain
-in the user folder. Tests cover original bytes, temporary-file cleanup, bounded
-retention, cancellation, history selection, export without resynthesis and atomic
-save failures. Packaged checks verify WAV export and the history control on both
-platforms; Windows also synthesizes a real SAPI clip before exporting it.
+Dropdowns and sliders no longer change values with the mouse wheel, even when
+focused. Wheel gestures scroll the surrounding settings panel/table instead;
+mouse and keyboard editing still work, as does scrolling an open dropdown list.
+This applies to the main window, Roleplay, Soundboard and recording settings.
+
+Available for Windows and Linux. Replace the old application files; your settings
+remain in the user folder. Regression tests cover footer visibility, persistent
+issues, recognition cancellation, preview/output lifecycle and wheel behavior.
+Both packaged builds also verify that the footer remains outside the scrolling
+area and retains a warning after an informational message.

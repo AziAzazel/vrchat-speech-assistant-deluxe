@@ -24,6 +24,8 @@ from vrchat_speech_assistant.audio_export import read_generated_audio, AudioRete
 from vrchat_speech_assistant.live_chatbox import LiveChatbox, ChatboxOutputError
 from vrchat_speech_assistant.chatbox_preview import ChatboxPreview, format_chatbox
 from vrchat_speech_assistant.favorite_reactions import FavoriteReactions, STARTERS
+from vrchat_speech_assistant.wheel_controls import NoWheelComboBox, NoWheelSlider
+from vrchat_speech_assistant.status_bar import StatusBar
 from PySide6 import QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal, QTimer
 from pythonosc.dispatcher import Dispatcher
@@ -70,6 +72,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     """
 
     status_signal = Signal(str, str)
+    recognition_state_signal = Signal(bool, int)
     activity_signal = Signal(bool)
     hotkey_state_signal = Signal(str)
     chatbox_preview_signal = Signal(str, str, int)
@@ -137,6 +140,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.status_signal.connect(self._show_status)
+        self.recognition_state_signal.connect(self._recognition_status)
+        self._recognizing_epoch = None
         self.activity_signal.connect(self._voice_activity)
         self.recognized_signal.connect(self._submit_recognized)
         self.finished_signal.connect(self._finish_output)
@@ -344,7 +349,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         tips_label = QtWidgets.QLabel("Speak clearly and avoid any source of background noise.")
         ######### Speech input widget #########
         input_device_label = QtWidgets.QLabel("Input device:")
-        self.input_device_combo = QtWidgets.QComboBox()
+        self.input_device_combo = NoWheelComboBox()
         input_device_names = [item["name"] for item in self.input_devices]
         self.input_device_combo.addItems(input_device_names)
         saved_input_device = self.config["APP"].get("input_device")
@@ -353,7 +358,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.input_device_combo.currentTextChanged.connect(self._on_input_device_clicked)
         ############ Source language widget #########
         source_language_label = QtWidgets.QLabel("Source language:")
-        self.source_language_combo = QtWidgets.QComboBox()
+        self.source_language_combo = NoWheelComboBox()
         self.source_language_combo.addItems(GOOGLE.keys())
         for index in range(self.source_language_combo.count()):
             if self.source_language_combo.itemText(index) in DEEPL_BETA_LANGUAGES:
@@ -362,7 +367,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.source_language_combo.currentTextChanged.connect(self._on_source_language_combo_clicked)
         ######### Target language widget #########
         target_language_label = QtWidgets.QLabel("Target language:")
-        self.target_language_combo = QtWidgets.QComboBox()
+        self.target_language_combo = NoWheelComboBox()
         self.target_language_combo.addItems(DEEPL.keys())
         for index in range(self.target_language_combo.count()):
             if self.target_language_combo.itemText(index) in DEEPL_BETA_LANGUAGES:
@@ -371,7 +376,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.target_language_combo.currentTextChanged.connect(self._on_target_language_combo_clicked)
         ######### Formality widget #########
         formality_label = QtWidgets.QLabel("DeepL translation formality:")
-        self.formality_combo = QtWidgets.QComboBox()
+        self.formality_combo = NoWheelComboBox()
         self.formality_combo.addItems(["Default", "Formal", "Informal"])
         self.formality_combo.setCurrentText(self.config["TRANSLATOR"].get("formality"))
         self.formality_combo.currentTextChanged.connect(self._on_formality_combo_clicked)
@@ -389,7 +394,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         speech_groupbox_layout = QtWidgets.QVBoxLayout(self.speech_groupbox)
         ######### Speech provider widget #########
         speech_provider_label = QtWidgets.QLabel("Speech provider:")
-        self.speech_provider_combo = QtWidgets.QComboBox()
+        self.speech_provider_combo = NoWheelComboBox()
         self.speech_provider_combo.addItems(["Windows Speech", "Piper (offline)", "Amazon Polly"])
         if not IS_WINDOWS:
             self.speech_provider_combo.model().item(0).setEnabled(False)
@@ -403,7 +408,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.polly_fallback_checkbox = QtWidgets.QCheckBox("Use Polly if local synthesis fails (online; AWS charges)")
         self.polly_fallback_checkbox.setChecked(self.config["SPEECH"].getboolean("polly_fallback"))
         self.polly_fallback_checkbox.toggled.connect(self._on_fallback_changed)
-        self.fallback_voice_combo = QtWidgets.QComboBox()
+        self.fallback_voice_combo = NoWheelComboBox()
         self.fallback_voice_combo.currentTextChanged.connect(self._on_fallback_voice_changed)
         self.local_voice_note = QtWidgets.QLabel("Local voices use their natural style; whisper/pitch effects require Polly.")
         self.local_voice_note.setWordWrap(True)
@@ -411,15 +416,15 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.polly_capability_label.setWordWrap(True)
         ######### Extra tags widgets #########
         extra_tags_label = QtWidgets.QLabel("Extra tags:")
-        self.extra_tags_combo = QtWidgets.QComboBox()
+        self.extra_tags_combo = NoWheelComboBox()
         self.extra_tags_combo.addItems(["None", "Whispered"])
         self.extra_tags_combo.currentTextChanged.connect(self._on_extra_tags_combo_clicked)
         ######### Speech voices widget #########
         speech_voice_label = QtWidgets.QLabel("Voice:")
-        self.speech_voice_combo = QtWidgets.QComboBox()
+        self.speech_voice_combo = NoWheelComboBox()
         ######### Speech pitch widget #########
         speech_pitch_label = QtWidgets.QLabel("Voice pitch:")
-        self.speech_pitch_slider = QtWidgets.QSlider(Qt.Horizontal)
+        self.speech_pitch_slider = NoWheelSlider(Qt.Horizontal)
         self.speech_pitch_slider.setRange(-50, 50)
         saved_pitch = max(-50, min(50, self.config["SPEECH"].getint("pitch")))
         self.speech_pitch_slider.setValue(saved_pitch)
@@ -429,7 +434,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.speech_pitch_slider.sliderReleased.connect(self.save_config)
         ######### Speech output widget #########
         output_device_label = QtWidgets.QLabel("Output device:")
-        self.output_device_combo = QtWidgets.QComboBox()
+        self.output_device_combo = NoWheelComboBox()
         output_device_names = [item["name"] for item in self.output_devices]
         self.output_device_combo.addItems(output_device_names)
         saved_output_device = self.config["SPEECH"].get("output_device")
@@ -464,7 +469,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         chatbox_groupbox_layout = QtWidgets.QVBoxLayout(self.chatbox_groupbox)
         ######### Font widget #########
         font_label = QtWidgets.QLabel("Font")
-        self.font_combo = QtWidgets.QComboBox()
+        self.font_combo = NoWheelComboBox()
         self.font_combo.addItems(FONTS)
         self.font_combo.setCurrentText(self.config["CHATBOX"].get("font"))
         self.font_combo.currentTextChanged.connect(self._on_font_combo_clicked)
@@ -498,6 +503,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         chatbox_delete_button.clicked.connect(self._on_chatbox_delete_button_clicked)
         ######### Log widget #########
         self.log_line_edit = QtWidgets.QLabel(self)
+        self.status_bar = StatusBar(self.log_line_edit, self.progressbar, self)
+        outer_layout.addWidget(self.status_bar)
+        self._update_status_bar()
         outer_layout.setMenuBar(menu_bar)
         main_layout.addWidget(banner)
         main_layout.addWidget(tips_label)
@@ -548,8 +556,6 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         refresh_button.clicked.connect(self.refresh_devices)
         main_layout.addWidget(refresh_button)
         main_layout.addWidget(chatbox_delete_button)
-        main_layout.addWidget(self.log_line_edit)
-        main_layout.addWidget(self.progressbar)
         self.global_shortcuts_checkbox = QtWidgets.QCheckBox("Global hotkeys (also outside this app)")
         self.global_shortcuts_checkbox.setChecked(self.config["ROLEPLAY"].getboolean("global_hotkeys"))
         if not IS_WINDOWS:
@@ -592,7 +598,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.ending_text.setMaxLength(120)
         self.ending_text.setPlaceholderText(", poi or , desu")
         self.ending_text.textChanged.connect(self._ending_settings_changed)
-        self.ending_frequency = QtWidgets.QSlider(Qt.Horizontal)
+        self.ending_frequency = NoWheelSlider(Qt.Horizontal)
         self.ending_frequency.setRange(0, 100)
         self.ending_frequency.setValue(max(0, min(100, self.config["ENDING"].getint("frequency"))))
         self.ending_frequency.valueChanged.connect(self._ending_settings_changed)
@@ -606,8 +612,6 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         reactions_card = card('Favorite reactions', [self.favorite_reactions], 'reactions')
         self.responsive_cards = ResponsiveCards([reactions_card, message_card, input_card, voice_card, chatbox_card, ending_card])
         main_layout.addWidget(self.responsive_cards)
-        main_layout.addWidget(self.log_line_edit)
-        main_layout.addWidget(self.progressbar)
         self.progressbar.setMaximumHeight(8)
         self.polly_fallback_checkbox.setText("Polly fallback (online; AWS charges)")
         self.manual_chatbox.setText("Send manual text to Chatbox")
@@ -979,7 +983,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.extra_tags["whispered"] = current_text == "Whispered"
 
     def _on_speech_pitch_value_changed(self, current_value: int):
-        self.log_line_edit.setText(f"Voice pitch: {str(current_value)}%")
+        self.log_info(f"Voice pitch: {str(current_value)}%")
         self.config["SPEECH"]["pitch"] = str(current_value)
         if not self.speech_pitch_slider.isSliderDown():
             self.save_config()
@@ -996,6 +1000,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.capture_retry_after = 0
         self.config["APP"]["input_device"] = current_text
         self.save_config()
+        self._update_status_bar()
 
     def _on_output_device_clicked(self, current_text: str):
         self.config["SPEECH"]["output_device"] = current_text
@@ -1141,6 +1146,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.toggle_thread()
 
     def _update_activate_button(self):
+        self._update_status_bar()
         if self.recover_listener:
             self.toggle_activate_button.setText("CANCEL MICROPHONE RECOVERY")
         elif not self.is_listener_running:
@@ -1340,6 +1346,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         return input_devices.get(input_device_name)
 
     def _voice_activity(self, activity: bool, chatbox=None):
+        self._update_status_bar()
         chatbox_enabled = self.config["CHATBOX"].getboolean("enabled")
         self.progressbar.setMaximum(0 if activity else 100)
         if chatbox is not False and (chatbox_enabled or chatbox is True or not activity):
@@ -1386,6 +1393,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         if self._closing or self.device_scan_busy:
             return
         self.device_scan_busy = True
+        self._update_status_bar()
         def scan():
             self.devices_signal.emit(*self._detect_device_snapshot())
         Thread(target=scan, name="audio-device-refresh", daemon=True).start()
@@ -1478,6 +1486,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         """Start the listener thread."""
         if self.listener_session and self.listener_session.thread.is_alive():
             self.recover_listener = True
+            self._update_status_bar()
             return
         input_device_name = self.config["APP"].get("input_device")
         input_device_index = self._get_input_device_index(input_device_name)
@@ -1540,6 +1549,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         epoch = self.recognition_epoch if epoch is None else epoch
         if self._closing or self.output_busy or self.pending_draft or self.editor_dirty or epoch != self.recognition_epoch:
             return  # Do not feed synthesized output back into the pipeline.
+        self.recognition_state_signal.emit(True, epoch)
         try:
             source = self.config["SPEECH"].get("source_language")
             if self.config["APP"].getboolean("beep"):
@@ -1555,6 +1565,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         except Exception:
             record_failure("Recognition", *sys.exc_info()[::2])
             self.status_signal.emit("error", "Recognition failed. See diagnostic logs.")
+        finally:
+            self.recognition_state_signal.emit(False, epoch)
 
     def _submit_recognized(self, text, epoch=None):
         if epoch is not None and epoch != self.recognition_epoch:
@@ -1582,6 +1594,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._update_countdown()
 
     def _update_countdown(self):
+        self._update_status_bar()
         if self.preview_timer.isActive():
             self.draft_status.setText(f"Auto-send in {max(0, self.draft_deadline - time.monotonic()):.1f}s — click Edit or type to pause.")
 
@@ -1601,10 +1614,12 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 self.preview_timer.stop()
                 self.countdown_timer.stop()
                 self.draft_status.setText("Editor cleared; recognition can fill the next draft.")
+                self._update_status_bar()
                 return
             self.editor_dirty = True
             if self.pending_draft:
                 self.edit_pending_message(focus=False)
+        self._update_status_bar()
 
     def edit_pending_message(self, focus=True):
         self.preview_timer.stop()
@@ -1614,6 +1629,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.draft_status.setText("Auto-send paused. Edit, then click Speak / send now.")
         if focus:
             self.manual_text.setFocus()
+        self._update_status_bar()
 
     def speak_manual_text(self):
         self.preview_timer.stop()
@@ -1861,6 +1877,39 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             return translate_message(self.translator, text, self.config["SPEECH"]["source_language"],
                                      self.config["SPEECH"]["target_language"], self.config["TRANSLATOR"])
 
+    def _recognition_status(self, active, epoch):
+        if self._closing or epoch != self.recognition_epoch:
+            return
+        self._recognizing_epoch = epoch if active else None
+        self._update_status_bar()
+
+    def _update_status_bar(self):
+        if not hasattr(self, 'status_bar'):
+            return
+        listener = 'Listening' if self.is_listener_running else 'Microphone recovery' if self.recover_listener else 'Listener off'
+        if self.output_busy:
+            activity = 'Stopping output…' if self.cancel_output.is_set() else 'Generating / playing audio…' if self.output_requires_audio else 'Sending text / captions…'
+            if self.is_listener_running:
+                listener = 'Microphone on — recognition paused during output'
+        elif self._recognizing_epoch == self.recognition_epoch:
+            activity = 'Recognizing speech…'
+        elif self.preview_timer.isActive():
+            activity = f'Auto-send in {max(0, self.draft_deadline - time.monotonic()):.1f}s — edit to pause'
+        elif self.pending_draft or self.editor_dirty:
+            activity = 'Draft ready'
+            if self.is_listener_running:
+                listener = 'Microphone on — recognition paused for draft'
+        elif self.recover_listener:
+            activity = 'Waiting for microphone…'
+        elif self.is_listener_running:
+            activity = 'Listening…'
+        else:
+            activity = 'Idle'
+        text = activity if activity == 'Listening…' else f'{activity} | {listener}'
+        if self.device_scan_busy:
+            text += ' | Scanning audio devices…'
+        self.status_bar.state_label.setText(text)
+
     def log_info(self, text: str):
         self.status_signal.emit("info", text)
 
@@ -1873,7 +1922,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def _show_status(self, level, text):
         self.clear_log()
         color = {"info": "", "warning": "orange", "error": "#cd3131"}[level]
-        self.log_line_edit.setText(text)
+        self.status_bar.show_message(level, text)
+        self._update_status_bar()
         self.log_line_edit.setStyleSheet(f"color: {color}" if color else "")
         if color:
             self.progressbar.setStyleSheet(f"border-style: none; background-color: {color}")
@@ -1881,6 +1931,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def clear_log(self):
         """Clears the current log and resets the progress bar color."""
         self.log_line_edit.clear()
+        self.log_line_edit.hide()
         self.progressbar.setStyleSheet("border-style: none")
 
     def resizeEvent(self, event):

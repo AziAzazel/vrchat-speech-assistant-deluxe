@@ -8,6 +8,13 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.30.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.30.0rc1) — Persistent status bar and safer scrolling
+
+- Add a fixed footer outside the scrolling settings, showing listening/off, recognition, auto-send countdown, draft pauses, output/cancellation, device scanning and microphone recovery.
+- Keep warnings/errors visible until explicitly dismissed, even after informational messages. Prefer errors over warnings, retain both in notice details and provide full messages on hover.
+
+- Keep dropdown selections and sliders unchanged by mouse-wheel gestures, even while focused. Scroll the surrounding settings panel or table instead; mouse and keyboard edits remain available.
+
 ### [1.29.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.29.0rc1) — Export generated speech from history
 
 - Add **Save speech audio…** to session history. Select the row marked **Available** to save the last generated speech, with no new synthesis or cloud request.

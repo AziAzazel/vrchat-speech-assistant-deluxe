@@ -139,6 +139,24 @@ pending auto-send. The fields remain session-only; session history keeps separat
 text for Repeat, which still uses your current voice settings. A fresh recognized
 preview clears the previous separate action to avoid reusing it accidentally.
 
+## Persistent status bar and scrolling
+
+The bottom bar stays visible when scrolling or collapsing settings. It shows
+whether the listener is on/off, speech is being recognized, a draft is waiting
+for auto-send/editing, output is being generated/played, or microphone recovery
+and device scanning are in progress. When an unsent draft or output pauses
+recognition, the bar distinguishes this from active listening.
+
+Warnings and errors stay in the footer until **Dismiss notices** is clicked.
+Routine messages such as “Output completed” do not erase them. Errors take
+priority; hover over the notice for full details, including any retained warning.
+Dismissal acknowledges the notice and does not fix its cause. Notices are kept
+only for the current session.
+
+The mouse wheel scrolls the surrounding settings panel/table when hovering over
+a dropdown or slider, even when focused. Use the mouse or keyboard to change
+these values; an open dropdown list can still be scrolled to find an option.
+
 ## Favorite reactions on large buttons
 
 The **Favorite reactions** card provides large buttons for saved Soundboard

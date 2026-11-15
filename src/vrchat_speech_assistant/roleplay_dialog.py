@@ -1,4 +1,5 @@
 """Roleplay controls and editable announcement shortcuts."""
+from vrchat_speech_assistant.wheel_controls import NoWheelComboBox
 from PySide6 import QtWidgets, QtGui
 from vrchat_speech_assistant.shortcut_editor import ShortcutEdit, HotkeySettingsDialog
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS
@@ -14,10 +15,10 @@ class RoleplayDialog(HotkeySettingsDialog):
         self.window = parent
         settings = parent.config["ROLEPLAY"]
         layout = QtWidgets.QVBoxLayout(self)
-        self.personality = QtWidgets.QComboBox()
+        self.personality = NoWheelComboBox()
         self.personality.addItems(PERSONALITIES)
         self.personality.setCurrentText(settings["personality"])
-        self.delivery = QtWidgets.QComboBox()
+        self.delivery = NoWheelComboBox()
         self.delivery.addItems(DELIVERIES)
         self.delivery.setCurrentText(settings["delivery"])
         self.personality.currentTextChanged.connect(lambda name: self.delivery.setCurrentText(PERSONALITIES[name][0]))
@@ -33,8 +34,8 @@ class RoleplayDialog(HotkeySettingsDialog):
         self.global_keys.setEnabled(parent.global_shortcuts_checkbox.isEnabled())
         layout.addWidget(self.global_keys)
         layout.addWidget(QtWidgets.QLabel("With global keys off, shortcuts work only while this app is focused. Clear a key to disable it."))
-        self.language_first = QtWidgets.QComboBox()
-        self.language_second = QtWidgets.QComboBox()
+        self.language_first = NoWheelComboBox()
+        self.language_second = NoWheelComboBox()
         for combo, field in ((self.language_first, "first"), (self.language_second, "second")):
             combo.addItems([name for name in GOOGLE if name in DEEPL])
             combo.setCurrentText(parent.config["LANGUAGES"].get(field))

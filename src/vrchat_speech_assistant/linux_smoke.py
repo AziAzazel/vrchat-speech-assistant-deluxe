@@ -88,6 +88,19 @@ def smoke_test(report_path):
             app.processEvents()
             assert window.responsive_cards.columns == columns
         checks['gui_and_shared_controls'] = 'passed'
+        scroll = window.findChild(QtWidgets.QScrollArea)
+        window.log_warning('Build verification notice.')
+        window.log_info('Build verification complete.')
+        assert 'Build verification notice.' in window.status_bar.issue_label.text()
+        for position in (scroll.verticalScrollBar().maximum(), 0):
+            scroll.verticalScrollBar().setValue(position)
+            app.processEvents()
+            assert window.status_bar.isVisible() and not scroll.isAncestorOf(window.status_bar)
+            assert window.status_bar.geometry().bottom() <= window.rect().bottom()
+            assert window.status_bar.geometry().top() > scroll.geometry().bottom()
+        window.status_bar.dismiss_button.click()
+        assert not window.status_bar.issues
+        checks['persistent_status'] = 'passed'
         from vrchat_speech_assistant.audio_export import read_generated_audio, save_generated_audio
         from vrchat_speech_assistant.history_dialog import HistoryDialog
         clip = read_generated_audio(tone)

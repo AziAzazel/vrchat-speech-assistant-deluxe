@@ -1279,3 +1279,96 @@ def test_unavailable_audio_export_does_not_fail_speech(gui, window, tmp_path):
     assert window.history[-1]['status'] == 'completed'
     assert 'audio' not in window.history[-1]
     assert window.history[-1]['audio_note']
+
+
+def test_footer_stays_visible_while_scrolling_and_preserves_issues(gui, window):
+    from PySide6 import QtWidgets
+    app, main = gui
+    window.show()
+    window.resize(650, 400)
+    window.log_error('Selected output disconnected.')
+    window.log_warning('Microphone scan failed.')
+    window.log_info('Output completed.')
+    app.processEvents()
+    bar = window.status_bar
+    assert bar.message_label.text() == 'Output completed.'
+    assert bar.issue_label.text() == 'Error: Selected output disconnected.'
+    assert 'Microphone scan failed.' in bar.issue_label.toolTip()
+    scroll = window.findChild(QtWidgets.QScrollArea)
+    for position in (0, scroll.verticalScrollBar().maximum()):
+        scroll.verticalScrollBar().setValue(position)
+        app.processEvents()
+        assert not scroll.isAncestorOf(bar)
+        assert bar.isVisible() and bar.issue_label.isVisible()
+        assert bar.geometry().bottom() <= window.rect().bottom()
+        assert bar.geometry().top() > scroll.geometry().bottom()
+    window.clear_log()
+    assert 'Selected output disconnected.' in bar.issue_label.text()
+    bar.dismiss_button.click()
+    assert bar.issue_label.text() == 'No pending notices.'
+    assert not bar.issues
+
+
+def test_footer_tracks_preview_edit_and_output_lifecycle(gui, window):
+    import threading
+    app, main = gui
+    bar = window.status_bar
+    window.manual_text.clear()
+    window.config['SPEECH'].update(enabled='True', provider='Amazon Polly', voice='Mizuki', output_device='Test device')
+    window.config['ROLEPLAY']['delivery'] = 'Normal'
+    window.extra_tags = {}
+    window.manual_chatbox.setChecked(False)
+    window.preview_checkbox.setChecked(True)
+    window.preview_delay.setValue(30)
+    window._submit_recognized('A draft to edit', window.recognition_epoch)
+    assert 'Auto-send in' in bar.state_label.text()
+    window.edit_pending_message(focus=False)
+    assert 'Draft ready' in bar.state_label.text()
+    entered, release = threading.Event(), threading.Event()
+    def speak(*args):
+        entered.set()
+        assert release.wait(2)
+    window.speech_provider.speech.side_effect = speak
+    try:
+        window.speak_manual_text()
+        assert entered.wait(1)
+        assert 'Generating / playing audio' in bar.state_label.text()
+        window.stop_speaking()
+        assert 'Stopping output' in bar.state_label.text()
+    finally:
+        release.set()
+        wait_output(app, window)
+    assert bar.state_label.text() == 'Idle | Listener off'
+    window.manual_text.clear()
+    assert bar.state_label.text() == 'Idle | Listener off'
+
+
+def test_footer_recognition_status_does_not_revive_stopped_listener(gui, window):
+    import threading
+    app, main = gui
+    window.manual_text.clear()
+    window.config['SPEECH']['source_language'] = 'English'
+    window.is_listener_running = True
+    window._update_activate_button()
+    assert window.status_bar.state_label.text() == 'Listening…'
+    entered, release = threading.Event(), threading.Event()
+    recognizer = Mock()
+    def recognize(*args, **kwargs):
+        entered.set()
+        assert release.wait(2)
+        return 'Hello'
+    recognizer.recognize_google.side_effect = recognize
+    worker = threading.Thread(target=window.recognize, args=(recognizer, b'audio', window.recognition_epoch))
+    worker.start()
+    try:
+        assert entered.wait(1)
+        app.processEvents()
+        assert 'Recognizing speech' in window.status_bar.state_label.text()
+        window.stop_listener()
+        assert 'Listener off' in window.status_bar.state_label.text()
+    finally:
+        release.set()
+        worker.join(2)
+        app.processEvents()
+    assert not window.pending_draft
+    assert window.status_bar.state_label.text() == 'Idle | Listener off'
