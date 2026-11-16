@@ -8,8 +8,9 @@ from vrchat_speech_assistant.roleplay import PERSONALITIES, spoken_delivery, ann
 def test_hotkey_validation_and_normalization():
     assert parse_hotkey("Ctrl+Alt+F5") == (3, 116)
     assert parse_hotkey("Alt+Ctrl+F5") == parse_hotkey("Ctrl+Alt+F5")
+    assert parse_hotkey("Ctrl+Delete") == (2, 46)
     assert parse_hotkey("Ctrl+J") == (2, ord("J"))
-    for bad in ("J", "Ctrl+Delete", "Ctrl+F25", "Ctrl+K, Ctrl+L", "", "Ctrl++"):
+    for bad in ("J", "Ctrl+F25", "Ctrl+K, Ctrl+L", "", "Ctrl++"):
         with pytest.raises(ValueError):
             parse_hotkey(bad)
 
@@ -49,5 +50,5 @@ def test_global_registration_routing_conflicts_and_cleanup(monkeypatch):
 
 def test_default_global_keys_avoid_reserved_f12():
     from vrchat_speech_assistant.roleplay import DEFAULT_HOTKEYS
-    assert all(parse_hotkey(key)[1] != 123 for key in DEFAULT_HOTKEYS.values())
+    assert all(parse_hotkey(key)[1] != 123 for key in DEFAULT_HOTKEYS.values() if key)
     assert DEFAULT_HOTKEYS["switch_language"] == "Ctrl+Shift+F10"

@@ -1,5 +1,6 @@
 """Editable phrases with explicit language, voice and destination."""
 import json
+from vrchat_speech_assistant.shortcut_conflicts import confirm_conflicts
 from pathlib import Path
 from vrchat_speech_assistant.wheel_controls import NoWheelComboBox
 from PySide6 import QtGui, QtWidgets
@@ -184,6 +185,8 @@ class SoundboardDialog(HotkeySettingsDialog):
             validate_presets(presets, [settings.get('key_' + action, DEFAULT_HOTKEYS[action]) for action in ACTIONS])
         except ValueError as error:
             QtWidgets.QMessageBox.warning(self, 'Invalid soundboard settings', str(error))
+            return
+        if not confirm_conflicts(self, [preset['key'] for preset in presets]):
             return
         self.window.config['SOUNDBOARD']['presets'] = json.dumps(presets, ensure_ascii=False)
         self.window.save_config()

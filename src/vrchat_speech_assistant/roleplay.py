@@ -1,4 +1,6 @@
 """Deterministic roleplay presets, independent of DeepL formality."""
+from vrchat_speech_assistant.language_presets import LANGUAGE_PRESETS
+
 PERSONALITIES = {
     "Neutral": ("Normal", "", ["Hello.", "Ready.", "Please clarify.", "Goodbye."]),
     "Helpful assistant": ("Normal", "[ASSISTANT]", ["Hello! How can I assist?", "Assistance protocols ready.", "Could you provide more context?", "Happy to help. Until next time."]),
@@ -12,6 +14,9 @@ ACTIONS = ["greeting", "system", "uncertain", "goodbye", "cycle_personality", "c
 DEFAULT_HOTKEYS = {action: f"Ctrl+Alt+F{index+5}" for index, action in enumerate(ACTIONS)}
 ACTIONS += ["stop_speaking", "switch_language"]
 DEFAULT_HOTKEYS.update(speak_paste="Ctrl+Shift+F8", stop_speaking="Ctrl+Shift+F11", switch_language="Ctrl+Shift+F10")
+
+ACTIONS += [*LANGUAGE_PRESETS, 'refresh_devices', 'edit_message', 'clear_chatbox', 'show_history']
+DEFAULT_HOTKEYS.update({action: '' for action in ACTIONS if action not in DEFAULT_HOTKEYS})
 
 
 def spoken_delivery(text, tags):

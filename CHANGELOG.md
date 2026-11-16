@@ -8,6 +8,16 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### [1.31.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.31.0rc1) — Conversation-first workspace, compact mode and quick binds
+
+- Replace the unequal card columns with Conversation, Soundboard, History, Voice & languages, Roleplay and Settings tabs. Keep listening, Stop, current voice/language summary and four highlighted language presets fixed above the tabs, with activity/issues fixed below.
+- Add a saved Compact mode that keeps the editor, send controls and favorite reactions while hiding tabs and advanced preview options. Keep drafts and output settings intact; settings navigation exits Compact without losing the draft.
+- Add a saved expandable Chatbox preview with an always-visible page-count toggle, a live embedded history/export view and a Soundboard playback library. Use aligned forms and tab-local scrolling for configuration. Retire the old card-collapse UI while preserving existing settings.
+
+- Assign/change/remove shortcuts from a right-click menu on primary controls, language presets and favorite reactions. Reuse shortcut recording with application hotkeys suspended, and reject duplicates across actions and Soundboard entries.
+- Warn before saving selected common Windows/VRChat default shortcuts using a small offline catalogue. Allow explicit override; system-reserved keys may still fail registration. Include named keys such as Escape, Tab and Delete.
+- Add four editable recognition/output presets (Polish→Polish, Polish→English, English→English, Polish→Japanese) with individual shortcuts and visible buttons. Preserve remembered voices/models and unsent drafts; reject translation presets without a configured translator. Keep the old same-language pair toggle available.
+
 ### [1.30.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.30.0rc1) — Persistent status bar and safer scrolling
 
 - Add a fixed footer outside the scrolling settings, showing listening/off, recognition, auto-send countdown, draft pauses, output/cancellation, device scanning and microphone recovery.

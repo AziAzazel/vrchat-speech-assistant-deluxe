@@ -14,14 +14,14 @@ class FavoriteReactions(QtWidgets.QWidget):
         self.buttons = []
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        note = QtWidgets.QLabel('One click plays the saved Soundboard voice/output. Mark Favorite in Soundboard settings to choose buttons.')
+        self.note = note = QtWidgets.QLabel('One click plays the saved Soundboard voice/output. Mark Favorite in Soundboard settings to choose buttons.')
         note.setWordWrap(True)
         layout.addWidget(note)
         self.grid = QtWidgets.QGridLayout()
         layout.addLayout(self.grid)
         self.empty = QtWidgets.QLabel('No favorite reactions yet.')
         layout.addWidget(self.empty)
-        button = QtWidgets.QPushButton('Edit favorites / Soundboard…')
+        self.edit_button = button = QtWidgets.QPushButton('Edit favorites / Soundboard…')
         button.clicked.connect(edit)
         layout.addWidget(button)
 

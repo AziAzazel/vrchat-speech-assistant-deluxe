@@ -1,5 +1,5 @@
 """Shared final chatbox formatting and a paged, read-only preview."""
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 from chatbox_osc.main import text_with_font
 from vrchat_speech_assistant.live_chatbox import split_pages, utf16_units, MAX_UNITS
 from vrchat_speech_assistant.roleplay import PERSONALITIES
@@ -19,6 +19,7 @@ def format_chatbox(result, source, font, rules, roleplay, override=None):
 
 
 class ChatboxPreview(QtWidgets.QWidget):
+    changed = QtCore.Signal()
     def __init__(self, parent=None):
         super().__init__(parent)
         self.pages, self.index = [], 0
@@ -57,3 +58,4 @@ class ChatboxPreview(QtWidgets.QWidget):
         self.counter.setText(f'Page {self.index + 1 if self.pages else 0} / {len(self.pages)} · VRChat limit: {utf16_units(text)} / {MAX_UNITS}')
         self.previous.setEnabled(self.index > 0)
         self.next.setEnabled(self.index + 1 < len(self.pages))
+        self.changed.emit()

@@ -516,27 +516,20 @@ def test_pitch_and_window_size_survive_restart(gui, window, monkeypatch):
         restarted.close()
 
 
-def test_cards_reflow_and_labels_wrap(gui, window):
+def test_workspace_keeps_transport_and_status_outside_scrolling_pages(gui, window):
     app, main = gui
     window.show()
-    window.resize(650, 700)
-    app.processEvents()
-    assert window.responsive_cards.columns == 1
-    window.resize(1100, 700)
-    app.processEvents()
-    assert window.responsive_cards.columns == 2
-    window.resize(1500, 700)
-    app.processEvents()
-    assert window.responsive_cards.columns == 3
-    window.resize(1100, 700)
-    app.processEvents()
-    assert window.responsive_cards.columns == 2
-    window.resize(650, 700)
-    app.processEvents()
-    assert window.responsive_cards.columns == 1
+    for width in (650, 1100, 1500, 650):
+        window.resize(width, 800)
+        app.processEvents()
+        assert window.tabs.count() == 6
+        assert window.transport.columns == (4 if width >= 820 else 2)
+        assert window.transport.geometry().bottom() < window.tabs.geometry().top()
+        assert window.status_bar.geometry().top() > window.tabs.geometry().bottom()
+        assert not window.conversation_scroll.isAncestorOf(window.transport)
+        assert not window.conversation_scroll.isAncestorOf(window.status_bar)
     assert window.hotkey_state_label.wordWrap()
     assert window.log_line_edit.wordWrap()
-    assert window.toggle_activate_button.maximumWidth() > 1000
 
 
 def test_legacy_focus_only_settings_migrate_once(gui, window, tmp_path, monkeypatch):
@@ -636,17 +629,17 @@ def test_history_marks_cancelled_and_failed_output(gui, window):
     assert window.history[-1]["status"] == "failed"
 
 
-def test_whole_category_and_ending_preferences_survive_restart(gui, window):
+def test_compact_and_ending_preferences_survive_restart(gui, window):
     app, main = gui
-    window.cards_by_key["inputs"].set_collapsed(True)
-    window.cards_by_key["voice"].set_collapsed(False)
+    window.transport.compact.setChecked(True)
     window.ending_text.setText(", poi")
     window.ending_frequency.setValue(37)
     window.close()
     restarted = main.VRCSpeechAssistantWindow()
     try:
-        assert restarted.cards_by_key["inputs"].is_collapsed()
-        assert not restarted.cards_by_key["voice"].is_collapsed()
+        assert restarted.transport.compact.isChecked()
+        assert not restarted.tabs.tabBar().isVisible()
+        restarted.transport.compact.setChecked(False)
         assert restarted.ending_text.text() == ", poi"
         assert restarted.ending_frequency.value() == 37
         assert not restarted.history  # History is never persisted.
@@ -655,11 +648,11 @@ def test_whole_category_and_ending_preferences_survive_restart(gui, window):
         restarted.close()
 
 
-def test_preview_expands_message_category(gui, window):
-    window.cards_by_key["messages"].set_collapsed(True)
+def test_preview_opens_conversation_tab(gui, window):
+    window.show_workspace_tab('Settings')
     window.preview_checkbox.setChecked(True)
     window._submit_recognized("Edit me")
-    assert not window.cards_by_key["messages"].is_collapsed()
+    assert window.tabs.currentWidget() is window.tab_pages['Conversation']
     assert window.manual_text.toPlainText() == "Edit me"
 
 
@@ -1194,17 +1187,21 @@ def test_soundboard_keeps_saved_missing_local_voice_while_editing(gui, window):
     assert 'installed Windows' in window.log_line_edit.text()
 
 
-def test_reflow_uses_viewport_even_when_content_is_wider(gui, window):
+def test_compact_mode_preserves_drafts_and_restores_preview(gui, window):
     app, main = gui
-    window.responsive_cards.setMinimumWidth(1600)
     window.show()
-    window.resize(1100, 700)
-    app.processEvents()
-    assert window.responsive_cards.width() >= 1600
-    assert window.responsive_cards.columns == 2
-    window.resize(650, 700)
-    app.processEvents()
-    assert window.responsive_cards.columns == 1
+    window.manual_text.setPlainText('Keep my draft')
+    window.preview_toggle.setChecked(True)
+    assert window.chatbox_preview.isVisible()
+    window.transport.compact.setChecked(True)
+    assert window.chatbox_preview.isHidden()
+    assert window.tabs.tabBar().isHidden()
+    assert window.manual_text.toPlainText() == 'Keep my draft'
+    assert window.speak_button.isVisible() and window.stop_speech_button.isVisible()
+    window.show_workspace_tab('Voice & languages')
+    assert not window.transport.compact.isChecked()
+    assert not window.chatbox_preview.isHidden()
+    assert window.manual_text.toPlainText() == 'Keep my draft'
 
 
 def test_local_control_callback_does_not_return_invalid_osc_reply(gui, window):
@@ -1294,7 +1291,7 @@ def test_footer_stays_visible_while_scrolling_and_preserves_issues(gui, window):
     assert bar.message_label.text() == 'Output completed.'
     assert bar.issue_label.text() == 'Error: Selected output disconnected.'
     assert 'Microphone scan failed.' in bar.issue_label.toolTip()
-    scroll = window.findChild(QtWidgets.QScrollArea)
+    scroll = window.conversation_scroll
     for position in (0, scroll.verticalScrollBar().maximum()):
         scroll.verticalScrollBar().setValue(position)
         app.processEvents()
@@ -1372,3 +1369,167 @@ def test_footer_recognition_status_does_not_revive_stopped_listener(gui, window)
         app.processEvents()
     assert not window.pending_draft
     assert window.status_bar.state_label.text() == 'Idle | Listener off'
+
+
+def test_button_shortcut_dialog_suspends_keys_warns_and_saves(gui, window, monkeypatch):
+    from PySide6 import QtCore, QtGui, QtWidgets
+    from vrchat_speech_assistant.button_shortcuts import ButtonShortcutDialog
+    assert window.stop_speech_button.property('shortcut_action') == 'stop_speaking'
+    assert window.stop_speech_button.contextMenuPolicy() == QtCore.Qt.CustomContextMenu
+    original = window.config['ROLEPLAY']['key_stop_speaking']
+    dialog = ButtonShortcutDialog(window, 'stop_speaking', 'Stop')
+    dialog.show()
+    gui[0].processEvents()
+    assert window._hotkey_edit_depth == 1 and not window.shortcuts
+    dialog.editor.setKeySequence(QtGui.QKeySequence('Alt+F4'))
+    assert 'close window' in dialog.notice.text()
+    warning = Mock(return_value=QtWidgets.QMessageBox.Cancel)
+    monkeypatch.setattr(QtWidgets.QMessageBox, 'warning', warning)
+    dialog.save()
+    assert window.config['ROLEPLAY']['key_stop_speaking'] == original
+    assert window._hotkey_edit_depth == 1
+    warning.return_value = QtWidgets.QMessageBox.Save
+    dialog.save()
+    assert window.config['ROLEPLAY']['key_stop_speaking'] == 'Alt+F4'
+    assert window._hotkey_edit_depth == 0
+    window.save_action_shortcut('stop_speaking', original)
+
+
+def test_shortcut_duplicates_cover_language_roleplay_and_soundboard(gui, window):
+    window.save_action_shortcut('language_preset_1', 'Ctrl+Alt+Shift+F1')
+    with pytest.raises(ValueError, match='language preset 1'):
+        window.save_action_shortcut('stop_speaking', 'Alt+Shift+Ctrl+F1')
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    window.soundboard_presets = [dict(DEFAULT_PRESETS[0], key='Ctrl+Alt+Shift+F2')]
+    key = window.soundboard_presets[0]['key']
+    with pytest.raises(ValueError, match='soundboard'):
+        window.save_action_shortcut('language_preset_2', key)
+    window.save_action_shortcut('language_preset_1', '')
+
+
+def test_four_language_presets_restore_output_voices_and_pause_drafts(gui, window):
+    from vrchat_speech_assistant.language_presets import LANGUAGE_PRESETS
+    window.translator = Mock()
+    window.config['SPEECH'].update(provider='Amazon Polly', target_language='English', source_language='English')
+    choices = {'Polish': 'Ewa', 'English': 'Joanna', 'Japanese': 'Mizuki'}
+    for language, voice in choices.items():
+        window.config['SPEECH'][window._voice_key('Amazon Polly', language)] = voice
+    window.preview_checkbox.setChecked(True)
+    window.preview_delay.setValue(30)
+    window._submit_recognized('Keep this draft', window.recognition_epoch)
+    for action, pair in LANGUAGE_PRESETS.items():
+        old_epoch = window.recognition_epoch
+        window.roleplay_action(action)
+        assert (window.config['SPEECH']['source_language'], window.config['SPEECH']['target_language']) == pair
+        assert window.speech_voice_combo.currentText() == choices[pair[1]]
+        assert window.recognition_epoch > old_epoch
+        assert window.manual_text.toPlainText() == 'Keep this draft'
+        assert not window.preview_timer.isActive()
+    window.translator.translate_text.assert_not_called()
+
+
+def test_translation_preset_without_deepl_keeps_previous_pair(gui, window):
+    window.translator = None
+    before = dict(window.config['SPEECH'])
+    window.roleplay_action('language_preset_4')
+    assert dict(window.config['SPEECH']) == before
+    assert 'Configure DeepL' in window.log_line_edit.text()
+
+
+def test_language_preset_settings_and_shortcuts_persist(gui, window):
+    from PySide6 import QtGui
+    from vrchat_speech_assistant.roleplay import ACTIONS
+    from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
+    dialog = RoleplayDialog(window)
+    action = 'language_preset_4'
+    source, target = dialog.language_pairs[action]
+    source.setCurrentText('English')
+    target.setCurrentText('Japanese')
+    dialog.table.cellWidget(ACTIONS.index(action), 1).setKeySequence(QtGui.QKeySequence('Ctrl+Alt+Shift+F4'))
+    dialog.save()
+    assert window.config['LANGUAGE_PRESETS'][action + '_source'] == 'English'
+    assert 'English → Japanese' == window.language_preset_buttons[action].text()
+    persisted = __import__('configparser').ConfigParser(interpolation=None)
+    persisted.read(gui[1].CONFIG_FILE, encoding='utf-8')
+    assert persisted['ROLEPLAY']['key_' + action] == 'Ctrl+Alt+Shift+F4'
+    assert persisted['LANGUAGE_PRESETS'][action + '_source'] == 'English'
+    window.save_action_shortcut(action, '')
+
+
+def test_right_click_menu_opens_binding_editor_and_can_remove_key(gui, window, monkeypatch):
+    from PySide6 import QtCore, QtGui, QtWidgets, QtTest
+    from vrchat_speech_assistant.button_shortcuts import ButtonShortcutDialog
+    opened = Mock(return_value=QtWidgets.QDialog.Rejected)
+    monkeypatch.setattr(ButtonShortcutDialog, 'exec', opened)
+    button = window.stop_speech_button
+    def choose(index):
+        menu = QtWidgets.QApplication.activePopupWidget()
+        assert isinstance(menu, QtWidgets.QMenu)
+        menu.setActiveAction(menu.actions()[index])
+        QtTest.QTest.keyClick(menu, QtCore.Qt.Key_Return)
+    QtCore.QTimer.singleShot(0, lambda: choose(0))
+    gui[0].sendEvent(button, QtGui.QContextMenuEvent(QtGui.QContextMenuEvent.Mouse, QtCore.QPoint(1, 1), button.mapToGlobal(QtCore.QPoint(1, 1))))
+    opened.assert_called_once()
+    original = window.config['ROLEPLAY']['key_stop_speaking']
+    QtCore.QTimer.singleShot(0, lambda: choose(1))
+    gui[0].sendEvent(button, QtGui.QContextMenuEvent(QtGui.QContextMenuEvent.Mouse, QtCore.QPoint(1, 1), button.mapToGlobal(QtCore.QPoint(1, 1))))
+    assert window.config['ROLEPLAY']['key_stop_speaking'] == ''
+    window.save_action_shortcut('stop_speaking', original)
+
+
+def test_workspace_default_and_compact_controls_fit_and_history_is_live(gui, window):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    app, main = gui
+    window.soundboard_presets = [dict(DEFAULT_PRESETS[0], text=f'Reaction {i}', key='', favorite=True) for i in range(6)]
+    window._refresh_favorites()
+    window.show()
+    window.resize(1000, 850)
+    window.transport.compact.setChecked(False)
+    window.preview_toggle.setChecked(False)
+    for _ in range(4): app.processEvents()
+    assert window.conversation_scroll.verticalScrollBar().maximum() == 0
+    window.resize(650, 700)
+    window.transport.compact.setChecked(True)
+    for _ in range(4): app.processEvents()
+    assert window.conversation_scroll.verticalScrollBar().maximum() == 0
+    assert window.favorite_reactions.buttons[-1].isVisible()
+    window._record_history(dict(id=1, time='00:00', status='completed', language='English',
+        source='From history', result='From history', spoken='From history', provider='Windows Speech', voice='Local'))
+    window.show_history()
+    assert window.tabs.currentWidget() is window.history_view
+    assert window.history_view.table.rowCount() == 1
+    window.manual_text.clear()
+    window.history_view.load_button.click()
+    assert window.tabs.currentWidget() is window.tab_pages['Conversation']
+    assert window.manual_text.toPlainText() == 'From history'
+    window.show_history()
+    assert window.history_view.isVisible()  # Loading never destroys/hides the embedded view.
+    window.clear_history()
+    assert window.history_view.table.rowCount() == 0
+
+
+def test_soundboard_library_uses_saved_preset_and_refreshes_after_edit(gui, window):
+    from vrchat_speech_assistant.soundboard import DEFAULT_PRESETS
+    window.soundboard_presets = [dict(DEFAULT_PRESETS[0], text='Library test')]
+    window._refresh_favorites()
+    window.show_workspace_tab('Soundboard')
+    assert window.soundboard_library.table.item(0, 0).text() == 'Library test'
+    window.play_soundboard = Mock()
+    window.soundboard_library.play.click()
+    window.play_soundboard.assert_called_once_with(window.soundboard_presets[0])
+    window.output_busy = True
+    window.soundboard_library.update_play()
+    assert not window.soundboard_library.play.isEnabled()
+    window.output_busy = False
+
+
+def test_transport_summary_tracks_voice_and_language_controls(gui, window):
+    assert window.speech_voice_combo.currentText() in window.transport.summary.text()
+    window.translator = Mock()
+    window.speech_provider_combo.setCurrentText('Amazon Polly')
+    window.source_language_combo.setCurrentText('Polish')
+    window.target_language_combo.setCurrentText('Japanese')
+    window.speech_voice_combo.setCurrentText('Mizuki')
+    assert 'Polish → Japanese' in window.transport.summary.text()
+    assert 'Amazon Polly' in window.transport.summary.text()
+    assert 'Mizuki' in window.transport.summary.text()

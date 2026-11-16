@@ -5,11 +5,45 @@
 This guide describes the current Deluxe application. For changes between releases,
 see the changelog. Standalone downloads support Windows x64 and Linux x86-64. For Bazzite, routing and platform differences, start with the [Linux guide](LINUX.md).
 
+## Workspace and compact VR view
+
+The top transport bar always shows **Start/stop listening**, **STOP speech**,
+the current input → output pair and voice, **Voice settings**, and four language
+presets. Matching presets are highlighted; right-click buttons to edit their
+shortcuts. The bottom activity/notice bar stays visible on every tab.
+
+- **Conversation:** shared transcript/manual editor, Speak/send, Edit/pause,
+  optional separate Chatbox text, expandable page preview, and large favorite reactions.
+- **Soundboard:** saved phrases/recordings with Play selected, management of
+  voices/shortcuts/SRT, and the Windows YouTube player.
+- **History:** live session history with load/repeat/export actions. Loading an
+  entry returns to Conversation and preserves the existing unsent-draft guard.
+- **Voice & languages:** recognition/output languages, DeepL formality, provider,
+  voice/pitch/delivery, Piper/Polly fallback, recognition preview/delay and Chatbox style.
+- **Roleplay:** personality/delivery shortcuts, corrections, pronunciation,
+  keyword additions and random endings.
+- **Settings:** microphone/output devices, provider credentials, global shortcuts,
+  Linux routing, settings folder and diagnostic logs.
+
+**Compact** hides the tab bar and advanced conversation options, retaining the
+editor, send/edit controls, large reactions and fixed top/bottom bars. Your draft
+and output options are retained. The mode is saved across restarts; opening
+settings/history exits it. Configuration pages scroll independently, without
+moving the transport controls. Small windows or many favorites can still require
+scrolling the conversation content.
+
+The **Chatbox preview — N pages** checkbox expands the preview; it starts folded
+on upgrade to keep the main controls together. The page count updates while
+folded. Preview visibility is remembered and restored after leaving Compact.
+Separate Chatbox text appears only when its checkbox is selected. The old
+multi-column/collapsible categories have been replaced by these tabs; voice,
+audio, translation, dictionary and roleplay settings are preserved.
+
 ## First setup: VRChat, virtual cable and OSC
 
 1. Download `VRChatSpeechAssistantDeluxe.exe` from [Releases](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases).
 2. Install [VB-CABLE](https://vb-audio.com/Cable/) or use your existing virtual audio setup.
-3. In Deluxe, choose your real microphone as **Input device** and **CABLE Input**
+3. In Deluxe, choose your real microphone in **Settings → Microphone** and **CABLE Input**
    as the speech output. In VRChat, choose **CABLE Output** as the microphone.
 4. Choose a source/target language and a voice that speaks the target language.
    Matching source/target languages avoid translation.
@@ -24,7 +58,7 @@ local recordings/music playback are available through Soundboard.
 
 ## Local Windows speech and Polly fallback
 
-Open **Voice settings → Speech provider → Windows Speech**, then select
+Open **Voice & languages → Provider → Windows Speech**, then select
 an installed voice and your output device (for example Cable Input). This works
 for both microphone recognition and pasted text. New configurations default to
 Windows Speech; existing configurations keep their saved provider until changed.
@@ -114,7 +148,7 @@ known thread/mixer hazards but do not establish the cause of every prior crash.
 
 ## Chatbox page preview and separate display text
 
-The **Message preview and speech** card shows how the editor text will be divided
+The **Conversation** tab shows how the editor text will be divided
 into pages above your avatar. Use **← / →** to browse them; the counter shows the
 current page, total pages and use of VRChat's text limit. Emoji and styled fonts
 are counted using the same rules as actual output. Previewing does not send OSC
@@ -139,9 +173,46 @@ pending auto-send. The fields remain session-only; session history keeps separat
 text for Repeat, which still uses your current voice settings. A fresh recognized
 preview clears the previous separate action to avoid reusing it accidentally.
 
+## Right-click shortcuts and language presets
+
+Right-click **Stop**, **Speak / send**, **Start/stop listening**, **Edit / pause**,
+**Refresh audio devices**, **Clear Chatbox text**, **Session history**, a favorite
+reaction, or a language preset button. Choose **Assign / change shortcut…**, click
+the recording field and press your combination. Delete/Backspace clears it;
+**Remove shortcut** clears an existing binding directly. Application shortcuts
+are paused while the recording dialog is open, including global Windows keys.
+Duplicate bindings across actions and Soundboard entries are rejected.
+
+The small offline catalogue warns about selected common Windows and VRChat
+Desktop defaults (for example Alt+F4, Ctrl+Shift+Esc, Ctrl+N and Shift+F1–F8),
+plus potentially reserved Win/Meta combinations. These are advisories, not a
+complete detection of custom/game/controller mappings. Save explicitly to accept
+a warning. Some combinations remain reserved by Windows and cannot register;
+the existing hotkey status reports registration failures. Bare letter bindings
+remain unsupported to avoid consuming ordinary typing.
+
+Four visible presets start as **Polish → Polish**, **Polish → English**,
+**English → English** and **Polish → Japanese**, with no assigned shortcuts.
+Use **Roleplay → Language presets and hotkeys…**, or right-click a preset and
+choose **Edit language preset…**, to change its input/output dropdowns and key.
+Their rows are named `language preset 1` through `language preset 4`.
+
+Switching applies the pair to subsequent recognition/output, pauses pending
+auto-send, preserves your draft and restores remembered voices and Piper models.
+Choose a matching output voice/model for each language first. Different input
+and output languages require configured DeepL translation; otherwise the app
+warns and keeps the previous pair. The old two-language toggle still switches
+recognition and output together and has its own configurable pair.
+
+Enable global Windows hotkeys to use them while VRChat is focused. VR controller
+software can send the assigned keyboard combinations; this is not direct
+controller-button capture. On Linux, use KDE shortcuts with `--action
+language_preset_1` through `language_preset_4`, or the existing Roleplay action
+names, for background activation.
+
 ## Persistent status bar and scrolling
 
-The bottom bar stays visible when scrolling or collapsing settings. It shows
+The bottom bar stays visible when scrolling or switching tabs. It shows
 whether the listener is on/off, speech is being recognized, a draft is waiting
 for auto-send/editing, output is being generated/played, or microphone recovery
 and device scanning are in progress. When an unsent draft or output pauses
@@ -159,7 +230,7 @@ these values; an open dropdown list can still be scrolled to find an option.
 
 ## Favorite reactions on large buttons
 
-The **Favorite reactions** card provides large buttons for saved Soundboard
+The **Conversation** tab provides large buttons for saved Soundboard
 entries. On first upgrade, if the selected output language is Polish or English,
 up to six starters are added once using the current provider/voice: **Tak / Nie /
 Chodź / Poczekaj / Nie rozumiem / Powtórz**, or their English equivalents. Existing
@@ -176,7 +247,7 @@ delivery, output route and separate chatbox text (or the recording's SRT). Start
 rows use **Voice + chatbox**. Choose a matching installed/configured voice for each
 row; changing the main language later does not change saved reactions. Buttons
 are disabled during output; Stop remains available. Unsent editor text is retained.
-This category reflows with the window and can be collapsed like other settings.
+The reaction grid reflows with the available width and remains available in Compact mode.
 
 ## Live speech captions and long messages
 
@@ -265,10 +336,9 @@ choices are remembered by target language too. Voice pitch updates live and is s
 (or immediately for keyboard/programmatic changes), then restored at launch, including the actual Polly synthesis setting. Local
 providers still do not support Polly's pitch effect.
 
-The interface reflows whole sections into 1, 2 or 3 columns as you widen the
-window. Descriptions wrap, controls expand with their section, and the banner is
-compact. Narrow windows retain vertical scrolling. The last normal window size
-and maximized state are restored, with dimensions clamped to the current screen.
+The workspace uses a single conversation column and tab-local configuration
+forms. Language buttons and favorite reactions reflow with width. The last normal
+window size and maximized state are restored, clamped to the current screen.
 
 ## Personality, announcements and delivery
 
@@ -336,7 +406,7 @@ application settings. Personality/delivery changes apply to the next utterance.
 The tests simulate Windows registration and SAPI. Global shortcuts in VRChat,
 real pacing, and Polly whispered delivery still need a Windows listening test.
 
-## Pronunciation, history, collapsible sections and random endings
+## Pronunciation, history and random endings
 
 **Edit → Pronunciation dictionary (speech only)** maps a displayed name/word to a
 spoken respelling, for example `Nekosan → Neko-san`. Matching ignores case and uses
@@ -369,13 +439,10 @@ mean every output was delivered: one output may already have arrived when the ot
   ending lottery, so the existing ending is not duplicated. Current chatbox
   effects and the manual Chatbox toggle still apply.
 
-Click any section header to collapse/expand its entire category. Voice settings,
-Chatbox and Random ending start collapsed. Every section's state is remembered.
-Recognition preview automatically opens the message section when needed so an
-editable draft/countdown is not hidden. The former inner Show settings controls
-are replaced by these whole-section headers.
+Recognition preview opens Conversation when an editable draft/countdown arrives.
+Use the tabs for configuration; they replace the former collapsible categories.
 
-Open **Random ending**, enter a suffix such as `, poi` or `, desu`, and set the
+Open **Roleplay → Random phrase endings**, enter a suffix such as `, poi` or `, desu`, and set the
 frequency slider: **0% never**, **100% always**, other values are a probability for
 each accepted utterance, not a fixed every-N counter. It starts at 0% with no
 text, so nothing changes until configured. Both the text (up to 120 characters)

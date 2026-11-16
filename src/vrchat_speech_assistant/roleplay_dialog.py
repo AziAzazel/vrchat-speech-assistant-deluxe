@@ -5,13 +5,15 @@ from vrchat_speech_assistant.shortcut_editor import ShortcutEdit, HotkeySettings
 from vrchat_speech_assistant.roleplay import PERSONALITIES, DELIVERIES, ACTIONS, DEFAULT_HOTKEYS
 from vrchat_speech_assistant.hotkeys import parse_hotkey
 from vrchat_speech_assistant.languages import GOOGLE, DEEPL
+from vrchat_speech_assistant.language_presets import LANGUAGE_PRESETS, language_pair
+from vrchat_speech_assistant.shortcut_conflicts import confirm_conflicts
 
 
 class RoleplayDialog(HotkeySettingsDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Personality, delivery and hotkeys")
-        self.resize(720, 500)
+        self.resize(950, 650)
         self.window = parent
         settings = parent.config["ROLEPLAY"]
         layout = QtWidgets.QVBoxLayout(self)
@@ -44,15 +46,40 @@ class RoleplayDialog(HotkeySettingsDialog):
         row.addWidget(self.language_first)
         row.addWidget(self.language_second)
         layout.addLayout(row)
+        self.language_pairs = {}
         self.table = QtWidgets.QTableWidget(len(ACTIONS), 3)
-        self.table.setHorizontalHeaderLabels(["Action", "Hotkey", "Custom announcement (blank = personality default)"])
+        self.table.setHorizontalHeaderLabels(["Action", "Hotkey", "Custom announcement / preset input → output"])
         for row, action in enumerate(ACTIONS):
             self.table.setCellWidget(row, 0, QtWidgets.QLabel(action.replace("_", " ")))
             key = ShortcutEdit(QtGui.QKeySequence(settings.get("key_" + action, DEFAULT_HOTKEYS[action])))
             self.table.setCellWidget(row, 1, key)
-            phrase = QtWidgets.QLineEdit(settings.get("phrase_" + action, ""))
-            phrase.setEnabled(action in ACTIONS[:4])
-            self.table.setCellWidget(row, 2, phrase)
+            if action in LANGUAGE_PRESETS:
+                pair = QtWidgets.QWidget()
+                pair_layout = QtWidgets.QHBoxLayout(pair)
+                pair_layout.setContentsMargins(0, 0, 0, 0)
+                source, target = NoWheelComboBox(), NoWheelComboBox()
+                for combo in (source, target):
+                    combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                    combo.setMinimumContentsLength(10)
+                source.addItems(GOOGLE)
+                target.addItems(DEEPL)
+                selected_source, selected_target = language_pair(parent.config, action)
+                source.setCurrentText(selected_source)
+                target.setCurrentText(selected_target)
+                source.setToolTip('Recognition / input language')
+                target.setToolTip('Translated / spoken output language')
+                pair_layout.addWidget(source)
+                pair_layout.addWidget(QtWidgets.QLabel('→'))
+                pair_layout.addWidget(target)
+                self.language_pairs[action] = source, target
+                self.table.setCellWidget(row, 2, pair)
+            else:
+                phrase = QtWidgets.QLineEdit(settings.get("phrase_" + action, ""))
+                phrase.setEnabled(action in ACTIONS[:4])
+                self.table.setCellWidget(row, 2, phrase)
+        self.table.setColumnWidth(0, 170)
+        self.table.setColumnWidth(1, 180)
+        self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
@@ -62,8 +89,8 @@ class RoleplayDialog(HotkeySettingsDialog):
 
     def save(self):
         bindings = {}
-        seen = {parse_hotkey(preset['key']) for preset in self.window.soundboard_presets if preset['key']}
         try:
+            seen = {parse_hotkey(preset['key']) for preset in self.window.soundboard_presets if preset['key']}
             for row, action in enumerate(ACTIONS):
                 sequence = self.table.cellWidget(row, 1).keySequence().toString(QtGui.QKeySequence.PortableText)
                 if sequence:
@@ -75,14 +102,22 @@ class RoleplayDialog(HotkeySettingsDialog):
         except ValueError as error:
             QtWidgets.QMessageBox.warning(self, "Invalid hotkeys", str(error))
             return
+        if not confirm_conflicts(self, bindings.values()):
+            return
         settings = self.window.config["ROLEPLAY"]
         settings.update(personality=self.personality.currentText(), delivery=self.delivery.currentText(),
                         chatbox_tag=str(self.tag.isChecked()), global_hotkeys=str(self.global_keys.isChecked()))
         for row, action in enumerate(ACTIONS):
             settings["key_" + action] = bindings[action]
-            settings["phrase_" + action] = self.table.cellWidget(row, 2).text()
+            if action in self.language_pairs:
+                source, target = self.language_pairs[action]
+                self.window.config['LANGUAGE_PRESETS'][action + '_source'] = source.currentText()
+                self.window.config['LANGUAGE_PRESETS'][action + '_target'] = target.currentText()
+            else:
+                settings["phrase_" + action] = self.table.cellWidget(row, 2).text()
         self.window.config["LANGUAGES"]["first"] = self.language_first.currentText()
         self.window.config["LANGUAGES"]["second"] = self.language_second.currentText()
         self.window.save_config()
         self.window._init_hotkeys()
+        self.window._refresh_language_presets()
         self.accept()

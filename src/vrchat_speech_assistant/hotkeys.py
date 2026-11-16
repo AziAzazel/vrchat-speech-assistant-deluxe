@@ -14,7 +14,13 @@ def parse_hotkey(sequence):
     for part in parts[:-1]:
         flags |= modifiers[part]
     key = parts[-1]
-    if key.startswith("F") and key[1:].isdigit() and 1 <= int(key[1:]) <= 24:
+    named = {'TAB': 9, 'ESC': 27, 'ESCAPE': 27, 'SPACE': 32, 'RETURN': 13,
+             'ENTER': 13, 'DELETE': 46, 'DEL': 46, 'INSERT': 45, 'INS': 45,
+             'HOME': 36, 'END': 35, 'PGUP': 33, 'PGDOWN': 34,
+             'LEFT': 37, 'UP': 38, 'RIGHT': 39, 'DOWN': 40, 'BACKSPACE': 8}
+    if key in named:
+        code = named[key]
+    elif key.startswith("F") and key[1:].isdigit() and 1 <= int(key[1:]) <= 24:
         code = 111 + int(key[1:])
     elif len(key) == 1 and key.isascii() and key.isalnum() and flags:
         code = ord(key)

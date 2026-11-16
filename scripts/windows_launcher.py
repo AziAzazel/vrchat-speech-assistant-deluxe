@@ -158,7 +158,7 @@ def smoke_test(report):
     window.show()
     app.processEvents()
     assert window.isVisible()
-    scroll = window.findChild(QtWidgets.QScrollArea)
+    scroll = window.conversation_scroll
     window.log_warning('Build verification notice.')
     window.log_info('Build verification complete.')
     assert 'Build verification notice.' in window.status_bar.issue_label.text()
@@ -191,7 +191,8 @@ def smoke_test(report):
     assert window.global_shortcuts_checkbox.isChecked()
     window.resize(1350, 800)
     app.processEvents()
-    assert window.responsive_cards.columns >= 2
+    from vrchat_speech_assistant.ui_smoke import verify_workspace
+    verify_workspace(window, app)
     window.speech_pitch_slider.setValue(-15)
     assert window.config["SPEECH"]["pitch"] == "-15"
     window._submit_recognized("Packaged transcript preview")
@@ -211,11 +212,6 @@ def smoke_test(report):
     assert window.config["ENDING"]["frequency"] == "100"
     assert add_random_ending("Hello.", ", poi", 100) == "Hello, poi."
     assert correct_nicknames("Hello Nekosan.", {"Nekosan": "Neko-san"}) == "Hello Neko-san."
-    window.cards_by_key["endings"].set_collapsed(False)
-    window.cards_by_key["endings"].set_collapsed(True)
-    assert window.config["UI"].getboolean("collapsed_endings")
-    window.cards_by_key["endings"].set_collapsed(False)
-    assert not window.config["UI"].getboolean("collapsed_endings")
     window._record_history({"id": 1, "time": "00:00:00", "status": "completed", "language": "English",
                             "source": "Hello", "result": "Hello, poi.", "spoken": "Hello, poi.",
                             "provider": "Windows Speech", "voice": "Local", "audio": exported_clips[0]})
@@ -301,7 +297,7 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "persistent_status": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "category_collapse": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "persistent_status": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "tabbed_workspace": "passed", "compact_mode": "passed", "shortcut_presets": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
 
 
 def main():

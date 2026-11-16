@@ -83,12 +83,13 @@ def smoke_test(report_path):
         window.separate_chatbox.setChecked(True)
         window.custom_chatbox_text.setPlainText('*looks suspicious*')
         assert window.chatbox_preview.pages == ['*looks suspicious*']
-        for width, columns in [(650,1), (1100,2), (1500,3), (650,1)]:
-            window.resize(width,700)
-            app.processEvents()
-            assert window.responsive_cards.columns == columns
+        from vrchat_speech_assistant.ui_smoke import verify_workspace
+        verify_workspace(window, app)
+        checks['tabbed_workspace'] = 'passed'
+        checks['compact_mode'] = 'passed'
+        checks['shortcut_presets'] = 'passed'
         checks['gui_and_shared_controls'] = 'passed'
-        scroll = window.findChild(QtWidgets.QScrollArea)
+        scroll = window.conversation_scroll
         window.log_warning('Build verification notice.')
         window.log_info('Build verification complete.')
         assert 'Build verification notice.' in window.status_bar.issue_label.text()

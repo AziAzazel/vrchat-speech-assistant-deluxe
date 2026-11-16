@@ -6,8 +6,11 @@ import sys
 
 
 class HistoryDialog(QtWidgets.QDialog):
-    def __init__(self, parent):
+    def __init__(self, parent, embedded=False):
         super().__init__(parent)
+        self.embedded = embedded
+        if embedded:
+            self.setWindowFlags(QtCore.Qt.Widget)
         self.window = parent
         self.setWindowTitle("Session history (memory only)")
         self.resize(850, 550)
@@ -28,7 +31,7 @@ class HistoryDialog(QtWidgets.QDialog):
         self.details.setReadOnly(True)
         self.details.setMaximumHeight(170)
         layout.addWidget(self.details)
-        buttons = QtWidgets.QHBoxLayout()
+        buttons = QtWidgets.QGridLayout()
         self.load_button = QtWidgets.QPushButton("Load original into editor")
         self.load_button.clicked.connect(self.load)
         self.replay_button = QtWidgets.QPushButton("Repeat result")
@@ -40,8 +43,9 @@ class HistoryDialog(QtWidgets.QDialog):
         clear.clicked.connect(parent.clear_history)
         close = QtWidgets.QPushButton("Close")
         close.clicked.connect(self.reject)
-        for button in (self.load_button, self.replay_button, self.save_audio_button, clear, close):
-            buttons.addWidget(button)
+        for index, button in enumerate((self.load_button, self.replay_button, self.save_audio_button, clear, close)):
+            buttons.addWidget(button, index // 2, index % 2)
+        close.setVisible(not embedded)
         layout.addLayout(buttons)
         self.refresh()
 
@@ -104,9 +108,15 @@ class HistoryDialog(QtWidgets.QDialog):
     def load(self):
         entry = self.selected()
         if entry and self.window.load_history_source(entry):
-            self.accept()
+            if self.embedded:
+                self.window.show_workspace_tab('Conversation')
+            else:
+                self.accept()
 
     def replay(self):
         entry = self.selected()
         if entry and self.window.replay_history(entry):
-            self.accept()
+            if self.embedded:
+                self.window.show_workspace_tab('Conversation')
+            else:
+                self.accept()
