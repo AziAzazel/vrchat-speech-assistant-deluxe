@@ -89,7 +89,7 @@ def test_every_backend_plays_and_exports_the_processed_audio(monkeypatch, tmp_pa
         request = provider.client.synthesize_speech.call_args.kwargs
         assert 'pitch=' not in request['Text'] and 'whispered' not in request['Text']
         assert request['Engine'] == backend
-        provider.speech('Private text', voice, 'device', {'pitch': -50, 'rate': 85})
+        provider.speech('Private text', voice, 'device', {'pitch': 200, 'rate': 85})
         assert provider.client.synthesize_speech.call_count == 1
 
 

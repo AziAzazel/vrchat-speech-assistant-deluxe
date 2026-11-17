@@ -25,6 +25,7 @@ from vrchat_speech_assistant.live_chatbox import LiveChatbox, ChatboxOutputError
 from vrchat_speech_assistant.chatbox_preview import ChatboxPreview, format_chatbox
 from vrchat_speech_assistant.favorite_reactions import FavoriteReactions, STARTERS
 from vrchat_speech_assistant.wheel_controls import NoWheelComboBox, NoWheelSlider
+from vrchat_speech_assistant.pitch_control import PitchControl
 from vrchat_speech_assistant.status_bar import StatusBar
 from vrchat_speech_assistant.language_presets import LANGUAGE_PRESETS, DEFAULT_PAIRS, language_pair
 from vrchat_speech_assistant.button_shortcuts import attach_shortcut_menu
@@ -413,9 +414,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.speech_voice_combo = NoWheelComboBox()
         ######### Speech pitch widget #########
         speech_pitch_label = QtWidgets.QLabel("Voice pitch:")
-        self.speech_pitch_slider = NoWheelSlider(Qt.Horizontal)
-        self.speech_pitch_slider.setRange(-75, 300)
-        self.speech_pitch_slider.setToolTip('Local pitch: -75% to +300% (two octaves down/up), without changing tempo. Included in audio export.')
+        self.speech_pitch_control = PitchControl(self)
+        self.speech_pitch_slider = self.speech_pitch_control.slider
         saved_pitch = max(-75, min(300, self.config["SPEECH"].getint("pitch")))
         self.speech_pitch_slider.setValue(saved_pitch)
         if saved_pitch:
@@ -445,7 +445,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         speech_groupbox_layout.addWidget(speech_voice_label)
         speech_groupbox_layout.addWidget(self.speech_voice_combo)
         speech_groupbox_layout.addWidget(speech_pitch_label)
-        speech_groupbox_layout.addWidget(self.speech_pitch_slider)
+        speech_groupbox_layout.addWidget(self.speech_pitch_control)
         speech_groupbox_layout.addWidget(output_device_label)
         speech_groupbox_layout.addWidget(self.output_device_combo)
         ######### Chatbox groupbox widget #########
@@ -1233,8 +1233,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         voice = self.speech_voice_combo.currentText() if direct else self.fallback_voice_combo.currentText()
         engine = polly_engine(voice)
         prefix = "Polly" if direct else "Polly fallback"
-        note = "Neural: local pitch and rate available; whisper unavailable." if engine == "neural" else "Standard: local pitch, rate and whisper available."
+        note = "Neural: local pitch and rate available; whisper unavailable." if engine == "neural" else "Standard: SSML pitch −50…+50%, local pitch outside this range; rate and whisper available."
         self.polly_capability_label.setText(prefix + " — " + note)
+        self.speech_pitch_control.configure(self.config['SPEECH'].get('provider'), self.speech_voice_combo.currentText())
         from vrchat_speech_assistant.providers import polly_styles
         styles = polly_styles(voice) if direct else ('None',)
         selected = self.extra_tags_combo.currentText()

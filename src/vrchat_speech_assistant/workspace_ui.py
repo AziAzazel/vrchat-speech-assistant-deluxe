@@ -239,7 +239,7 @@ def build_workspace(window, outer, refresh_button, clear_button):
         ('', action_button('Edit language presets & their shortcuts…', lambda: w.edit_roleplay('language_preset_1')))]))
     voice_layout.addWidget(w.speech_status_checkbox)
     rebuild_group(w.speech_groupbox, [('Provider', w.speech_provider_combo), ('Voice', w.speech_voice_combo),
-        ('Delivery', w.extra_tags_combo), ('Pitch', w.speech_pitch_slider),
+        ('Delivery', w.extra_tags_combo), ('Pitch', w.speech_pitch_control),
         ('', w.piper_model_button), ('', w.piper_backend_button), ('', w.polly_fallback_checkbox),
         ('Fallback voice', w.fallback_voice_combo), ('', w.local_voice_note), ('', w.polly_capability_label)])
     voice_layout.addWidget(w.speech_groupbox)

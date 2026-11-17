@@ -8,6 +8,12 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### 1.32.0rc2 — Hybrid Polly pitch and a clearer slider
+
+- Prefer SSML pitch for Polly Standard from −50% through +50%; use the entire requested local shift outside that range. Neural, Windows Speech and Piper always use local pitch. Keep remotely pitched and dry cache entries separate, and export the final audio without applying pitch twice.
+- Mark SSML ranges blue and local ranges orange, with a numeric value and explicit SSML/Local/Natural label. Neural/local voices show an entirely orange slider. Add a zero marker, mouse-drag snapping near zero, a 0% reset button and double-click reset; preserve exact keyboard steps.
+- Show the same pitch route in Soundboard settings, and cover routing boundaries, cache isolation, actual output frequency/export and slider interactions in regression tests and packaged UI checks.
+
 ### 1.32.0rc1 — Local pitch and supported Polly styles
 
 - Apply pitch locally to Windows Speech, Piper and Standard/Neural Polly audio without changing duration or delivery tempo. Extend main and Soundboard pitch to −75% through +300% (two octaves down/up).

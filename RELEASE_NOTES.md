@@ -1,7 +1,7 @@
-# VRChat Speech Assistant Deluxe 1.32.0rc1
+# VRChat Speech Assistant Deluxe 1.32.0rc2
 
-Local pitch now works with Windows Speech, Piper and Amazon Polly, including Neural voices. The −75% to +300% range covers two octaves down/up without changing tempo. Audio export includes the effect you hear.
+Polly Standard now prefers SSML pitch from −50% through +50%. Outside that range, the whole shift uses local processing. Neural, Windows Speech and Piper always use local pitch. The methods are never stacked, and audio export retains the final sound.
 
-Polly receives no SSML pitch. Whisper is offered only for supported Standard voices in the main controls, Roleplay and Soundboard; incompatible selections reset to Normal. Changing pitch reuses dry Polly audio instead of requesting another synthesis.
+The slider marks SSML blue and local processing orange, with a value and SSML/Local/Natural label. Neural/local voices show an entirely orange track. A 0% button, double-click reset, zero marker and drag snapping make the natural pitch easy to select; keyboard edits retain 1% precision. Soundboard pitch colors follow the same rules.
 
-Windows x64 and Linux x86-64 assets are published together only after their tests and packaged GUI/audio smoke checks pass. Microphone recognition, physical VRChat routing and live AWS/DeepL credentials still need verification on the user's hardware/account.
+Windows and Linux release assets are published together after their tests and packaged GUI/audio checks pass. Live AWS synthesis and physical microphone/VRChat routing still need account/hardware validation.

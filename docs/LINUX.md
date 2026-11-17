@@ -28,7 +28,8 @@ The app uses Qt's X11 backend through XWayland by default.
 
 ## Voices
 
-- **Amazon Polly:** enter your own AWS credentials. All voices support local pitch without changing tempo;
+- **Amazon Polly:** enter your own AWS credentials. Standard uses SSML pitch from −50% through +50%, with local pitch
+  outside that range. Neural always uses local pitch without changing tempo;
   whisper is offered only for Standard voices. DeepL is optional and
   only used for translation. Recognition still uses Google's online service.
 - **Piper (offline):** the default Linux provider. Install an external Linux Piper

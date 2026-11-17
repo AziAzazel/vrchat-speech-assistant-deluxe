@@ -23,7 +23,7 @@ class SoundboardDialog(HotkeySettingsDialog):
             'Each shortcut sends exactly the saved phrase, without translation, random endings or personality effects. '
             'Choose a voice that speaks the selected language. Japanese example: ぽい (poi). '
             'Chatbox text can differ from speech; leave it blank to show the spoken text. '
-            'Local pitch (-75 to +300%) keeps the tempo on all speech providers, including Neural. Whisper requires Polly Standard (e.g. Mizuki). '
+            'Pitch: Polly Standard uses SSML from -50 to +50%, then local processing outside that range. Neural and local voices always use local pitch. Whisper requires Polly Standard (e.g. Mizuki). '
             'Shortcuts are paused while these settings are open. Clear a shortcut to disable it. Recordings can use timed SRT captions. '
             'Polly needs your AWS keys; Windows voices must be installed; Piper uses the configured model for that language.')
         note.setWordWrap(True)
@@ -77,7 +77,7 @@ class SoundboardDialog(HotkeySettingsDialog):
         pitch.setRange(-75, 300)
         pitch.setSuffix('%')
         pitch.setValue(preset.get('pitch', 0))
-        pitch.setToolTip('Local pitch: -75 to +300%, without changing tempo. All speech providers; exported audio includes the effect.')
+        pitch.setToolTip('Pitch: -75 to +300%. Polly Standard uses SSML from -50 to +50%; otherwise local. Exported audio includes the effect.')
         self.table.setCellWidget(row, 9, pitch)
         favorite = QtWidgets.QCheckBox('★')
         favorite.setChecked(preset.get('favorite', False))
@@ -93,6 +93,12 @@ class SoundboardDialog(HotkeySettingsDialog):
         if not IS_WINDOWS:
             provider.model().item(provider.findText('Windows Speech')).setEnabled(False)
         self.table.setCellWidget(row, 5, voice)
+        def refresh_pitch():
+            from vrchat_speech_assistant.pitch_routing import pitch_route
+            route = pitch_route(provider.currentText(), voice.currentText(), pitch.value())
+            color = {'off': '#eeeeee', 'ssml': '#64b5f6', 'local': '#ffb74d'}[route]
+            pitch.setStyleSheet(f'color: {color};')
+            pitch.setToolTip(f'{pitch.value():+d}% · {route.title()}. Blue: Polly Standard SSML -50…+50%; orange: local. Export includes the effect.')
         def refresh_styles():
             from vrchat_speech_assistant.providers import polly_styles
             whisper = provider.currentText() == 'Amazon Polly' and 'Whispered' in polly_styles(voice.currentText())
@@ -101,6 +107,7 @@ class SoundboardDialog(HotkeySettingsDialog):
             delivery.addItems(DELIVERIES if whisper else ('Normal',))
             delivery.setCurrentText(selected if whisper else 'Normal')
             delivery.setEnabled(not recording and output.currentText() != 'Chatbox only' and whisper)
+            refresh_pitch()
         def refresh():
             selected = voice.currentText() or preset['voice']
             voice.clear()
@@ -137,6 +144,7 @@ class SoundboardDialog(HotkeySettingsDialog):
         provider.currentTextChanged.connect(refresh)
         output.currentTextChanged.connect(refresh)
         voice.currentTextChanged.connect(refresh_styles)
+        pitch.valueChanged.connect(refresh_pitch)
         refresh()
         files = QtWidgets.QPushButton('Files / SRT…' if recording else '—')
         files.recording = dict(preset) if recording else None

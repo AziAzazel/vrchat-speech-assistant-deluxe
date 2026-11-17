@@ -10,6 +10,7 @@ from vrchat_speech_assistant.diagnostics import DATA_DIR
 from vrchat_speech_assistant.output_control import check_cancelled, playback_callback, report_generated_audio
 from vrchat_speech_assistant.languages import POLLY_VOICES_ENGINE
 from vrchat_speech_assistant.audio_effects import pitched_audio, validate_pitch
+from vrchat_speech_assistant.pitch_routing import pitch_route
 
 VOICES_PATH = DATA_DIR / "voices"
 
@@ -79,6 +80,8 @@ class Polly:
 
         engine = polly_engine(voice_id)
         validate_polly_style(voice_id, extra_tags or {})
+        pitch = (extra_tags or {}).get('pitch', 0)
+        ssml_pitch = pitch_route('Amazon Polly', voice_id, pitch) == 'ssml'
         def convert_to_ssml(input_text):
             # https://docs.aws.amazon.com/polly/latest/dg/supportedtags.html
             ssml_tags = escape(input_text)
@@ -89,13 +92,17 @@ class Polly:
                     ssml_tags = f'<amazon:effect name="whispered">{ssml_tags}</amazon:effect>'
                 if extra_tags.get("rate"):
                     ssml_tags = '<prosody rate="{}%">{}</prosody>'.format(extra_tags["rate"], ssml_tags)
+            if ssml_pitch:
+                ssml_tags = f'<prosody pitch="{pitch:+d}%">{ssml_tags}</prosody>'
             return f"<speak>{ssml_tags}</speak>"
 
         # Hash content/settings to avoid long filenames, collisions and transcript leaks.
-        # Version the dry cache so legacy files containing SSML pitch are never
-        # processed a second time. Local pitch changes reuse one AWS synthesis.
+        # Keep dry and remotely pitched audio separate, including pitch in the
+        # SSML key. Out-of-range local settings continue reusing dry synthesis.
         remote_tags = {key: value for key, value in (extra_tags or {}).items() if key in ('rate', 'whispered')}
-        cache_key = ['dry-v2', text, remote_tags, engine]
+        if ssml_pitch:
+            remote_tags['pitch'] = pitch
+        cache_key = ['ssml-v1' if ssml_pitch else 'dry-v2', text, remote_tags, engine]
         filename = hashlib.sha256(json.dumps(cache_key, sort_keys=True).encode()).hexdigest()
         filepath = VOICES_PATH / voice_id / f"{filename}.ogg"
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -112,7 +119,8 @@ class Polly:
             with contextlib.closing(response["AudioStream"]) as stream:
                 temporary.write_bytes(stream.read())
             temporary.replace(filepath)
-        with pitched_audio(filepath, extra_tags) as final_audio:
+        local_tags = dict(extra_tags or {}, pitch=0 if ssml_pitch else pitch)
+        with pitched_audio(filepath, local_tags) as final_audio:
             report_generated_audio(final_audio)
             read_ogg_file(str(final_audio), output_device_name)
 

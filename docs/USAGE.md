@@ -334,12 +334,19 @@ Voice selection is remembered for each **provider + target language**, whether
 you use a language dropdown or the quick-switch hotkey. Polly fallback voice
 choices are remembered by target language too. Voice pitch updates live and is saved when a dragged slider is released
 (or immediately for keyboard/programmatic changes), then restored at launch.
-Pitch runs locally after synthesis on Windows Speech, Piper and Polly, including
-Neural voices. The range is **−75% to +300%** (two octaves down/up); **0%**
+Polly Standard uses SSML pitch from **−50% through +50%**. Outside this range,
+the entire shift runs locally; the methods are never stacked. Neural, Windows
+Speech and Piper use local pitch throughout the range. The range is **−75% to +300%** (two octaves down/up); **0%**
 preserves the original audio. It keeps the duration and selected delivery tempo.
-History exports the processed WAV that was played; an unchanged Polly clip can
-still export its original OGG. Changing local pitch reuses Polly's dry cache
-without another AWS synthesis request. Older SSML-pitched cache files are not reused.
+The blue part of the pitch slider marks the Standard SSML range; orange marks
+local processing. Neural/local voices have an entirely orange track. The current
+value also says SSML, Local or Natural, so color is not the only indication.
+Dragging within 3 percentage points of zero snaps to **0%**; the **0%** button or
+double-click resets the slider. Keyboard steps remain precise.
+History exports the final audio that was played: locally processed WAV, or Polly
+OGG containing the selected SSML effect. Changing local pitch reuses Polly's dry cache
+without another AWS synthesis request. SSML pitch settings have separate cache
+entries, so remotely pitched audio is never processed again as a dry clip.
 
 The workspace uses a single conversation column and tab-local configuration
 forms. Language buttons and favorite reactions reflow with width. The last normal
@@ -433,7 +440,7 @@ mean every output was delivered: one output may already have arrived when the ot
   draft first.
 - **Save speech audio…** saves the last generated speech from the row marked
   **Available**, without synthesis or another Polly request. Windows Speech and
-  Piper export WAV; Polly exports OGG at pitch 0% or processed WAV otherwise. Delivery and local pitch settings are already part of the
+  Piper export WAV; Polly exports OGG for SSML/natural pitch or WAV for local pitch. Delivery and local pitch settings are already part of the
   file; there is no MP3 conversion. The complete generated clip remains available
   even after Stop or playback failure. Only one clip (up to 32 MiB) is retained in
   memory. New generated audio replaces it; text-only attempts keep it. Clear
@@ -505,7 +512,8 @@ output. Existing rows default to Normal delivery and matching speech/chatbox tex
 **Pitch** sets the saved phrase's pitch from **−75% to +300%**, independently of
 the main Voice pitch slider. **0%** keeps the natural pitch and is the default for
 older rows. Pitch works with Windows Speech, Piper and both Standard/Neural Polly
-voices, without changing tempo, and is included in audio export. It can be
+voices and is included in audio export. Standard uses SSML within −50…+50%;
+all other settings use local pitch without changing tempo. It can be
 combined with Whispered delivery on **Polly Standard** voices, such as Mizuki.
 Chatbox-only entries retain the setting without applying it. Pitch and delivery
 are disabled for recordings, which keep their original audio.
@@ -608,7 +616,8 @@ explain the shared baseline, incorporated fixes and experimental branches.
 - Polly catalogue: 100 distinct voice IDs, including Polish **Ola [Neural]**.
   New voices select the required engine. Existing voice labels, saved selections
   and Standard effects remain compatible.
-- Neural voices support rate and local pitch. SSML pitch is never sent to Polly.
+- Neural voices support rate and local pitch. SSML pitch is sent only to Standard
+  voices from −50% through +50%; outside this range the shift is entirely local.
   Whisper is offered only for Standard voices in the voice, Roleplay and Soundboard
   controls. Switching to Neural resets an active whisper style to Normal; stale
   unsupported requests are rejected before AWS is contacted, including fallback.

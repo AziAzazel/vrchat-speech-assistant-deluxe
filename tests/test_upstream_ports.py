@@ -57,7 +57,7 @@ def test_standard_voice_keeps_whisper_pitch_and_explicit_engine(gui, monkeypatch
     polly.speech('Hello', 'Justin', 'Cable', {'whispered': True, 'pitch': -10})
     request = polly.client.synthesize_speech.call_args.kwargs
     assert request['Engine'] == 'standard'
-    assert 'name="whispered"' in request['Text'] and 'pitch=' not in request['Text']
+    assert 'name="whispered"' in request['Text'] and 'pitch="-10%"' in request['Text']
 
 
 def test_beta_translation_options_do_not_change_english_polish():

@@ -137,7 +137,7 @@ def test_provider_escapes_ssml_and_uses_safe_cache(gui, tmp_path, monkeypatch):
     provider.speech(text, "Justin", "Virtual cable", {"whispered": True, "pitch": -10})
     request = provider.client.synthesize_speech.call_args.kwargs
     assert "&lt;hello&gt; &amp; friends" in request["Text"]
-    assert 'pitch=' not in request["Text"]
+    assert '<prosody pitch="-10%">' in request["Text"]
     path = Path(playback.call_args.args[0])
     assert len(path.stem) == 64 and path.read_bytes() == b"audio"
     provider.speech(text, "Justin", "Virtual cable", {"whispered": True, "pitch": -10})
@@ -1578,3 +1578,24 @@ def test_switching_voice_removes_unsupported_whisper_and_keeps_pitch(gui, window
     assert window.speech_pitch_slider.isEnabled()
     assert window.extra_tags_combo.findText('Whispered') == -1
     window.speech_pitch_slider.setValue(0)
+
+
+def test_pitch_indicator_tracks_selected_voice_and_reset_is_saved(gui, window):
+    window.config['SPEECH'].update(provider='Amazon Polly', target_language='Polish')
+    window.target_language_combo.blockSignals(True)
+    window.target_language_combo.setCurrentText('Polish')
+    window.target_language_combo.blockSignals(False)
+    window._append_voices_for_selected_provider()
+    window.speech_voice_combo.setCurrentText('Ewa')
+    window.speech_pitch_slider.setValue(20)
+    assert window.speech_pitch_slider.property('pitchRoute') == 'ssml'
+    window.speech_pitch_slider.setValue(51)
+    assert window.speech_pitch_slider.property('pitchRoute') == 'local'
+    window.speech_voice_combo.setCurrentText('Ola [Neural]')
+    window.speech_pitch_slider.setValue(20)
+    assert window.speech_pitch_slider.property('pitchRoute') == 'local'
+    assert 'Local' in window.speech_pitch_control.value_label.text()
+    window.speech_pitch_control.reset.click()
+    assert window.config['SPEECH']['pitch'] == '0'
+    assert 'pitch' not in window.extra_tags
+    assert window.speech_pitch_slider.property('pitchRoute') == 'off'

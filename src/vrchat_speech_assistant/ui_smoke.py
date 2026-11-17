@@ -29,6 +29,16 @@ def verify_local_pitch(directory):
 def verify_workspace(window, app):
     from vrchat_speech_assistant.shortcut_conflicts import known_conflicts
     assert window.tabs.count() == 6
+    # Frozen builds must include the hybrid routing and resettable control too.
+    from vrchat_speech_assistant.pitch_routing import pitch_route
+    assert pitch_route('Amazon Polly', 'Justin', 50) == 'ssml'
+    assert pitch_route('Amazon Polly', 'Justin', 51) == 'local'
+    assert pitch_route('Amazon Polly', 'Ola [Neural]', 20) == 'local'
+    saved_pitch = window.speech_pitch_slider.value()
+    window.speech_pitch_slider.setValue(51)
+    window.speech_pitch_control.reset.click()
+    assert window.speech_pitch_slider.value() == 0
+    window.speech_pitch_slider.setValue(saved_pitch)
     for width in (650, 1100, 1500, 650):
         window.resize(width, 800)
         app.processEvents()
