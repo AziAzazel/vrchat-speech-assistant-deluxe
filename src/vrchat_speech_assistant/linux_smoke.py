@@ -34,6 +34,10 @@ def smoke_test(report_path):
     recorder = None
     window = None
     try:
+        stage('local_pitch_export')
+        from vrchat_speech_assistant.ui_smoke import verify_local_pitch
+        verify_local_pitch(folder)
+        checks['local_pitch_export'] = 'passed'
         stage("virtual_microphone")
         route.create()
         assert any(d['name'] == SOURCE for d in json.loads(pulse('-f', 'json', 'list', 'sources')))

@@ -131,11 +131,13 @@ def test_provider_escapes_ssml_and_uses_safe_cache(gui, tmp_path, monkeypatch):
     provider = providers.Polly.__new__(providers.Polly)
     provider.client = Mock()
     provider.client.synthesize_speech.side_effect = lambda **kwargs: {"AudioStream": io.BytesIO(b"audio")}
+    from contextlib import nullcontext
+    monkeypatch.setattr(providers, "pitched_audio", lambda path, tags: nullcontext(path))
     text = "<hello> & friends " * 100
     provider.speech(text, "Justin", "Virtual cable", {"whispered": True, "pitch": -10})
     request = provider.client.synthesize_speech.call_args.kwargs
     assert "&lt;hello&gt; &amp; friends" in request["Text"]
-    assert '<prosody pitch="-10%">' in request["Text"]
+    assert 'pitch=' not in request["Text"]
     path = Path(playback.call_args.args[0])
     assert len(path.stem) == 64 and path.read_bytes() == b"audio"
     provider.speech(text, "Justin", "Virtual cable", {"whispered": True, "pitch": -10})
@@ -673,7 +675,7 @@ def test_pronunciation_editor_saves_persistent_rules(gui, window, monkeypatch, t
     assert window.pronunciations == {"Nekosan": "Neko-san"}
 
 
-def test_neural_voice_keeps_pitch_setting_and_explains_invalid_style(gui, window, monkeypatch):
+def test_neural_voice_uses_local_pitch_and_hides_whisper(gui, window, monkeypatch):
     app, main = gui
     window.config['SPEECH'].update(provider='Amazon Polly', target_language='Polish')
     window.config['ROLEPLAY']['delivery'] = 'Normal'
@@ -686,9 +688,12 @@ def test_neural_voice_keeps_pitch_setting_and_explains_invalid_style(gui, window
     window.speech_pitch_slider.setValue(-20)
     window.manual_text.setPlainText('Cześć')
     window.speak_manual_text()
-    app.processEvents()
-    window.speech_provider.speech.assert_not_called()
-    assert 'Standard voice' in window.log_line_edit.text()
+    wait_output(app, window)
+    window.speech_provider.speech.assert_called_once()
+    assert window.speech_provider.speech.call_args.args[3]['pitch'] == -20
+    assert window.extra_tags_combo.findText('Whispered') == -1
+    assert window.speech_pitch_slider.isEnabled()
+    assert 'Confidential whisper' not in window.supported_deliveries()
     assert window.config['SPEECH']['pitch'] == '-20'
     window.speech_pitch_slider.setValue(0)
 
@@ -805,7 +810,7 @@ def test_soundboard_dialog_persists_and_registers_shortcut(gui, window, monkeypa
     assert dialog.table.cellWidget(0, 7).text() == ''
     assert dialog.table.cellWidget(0, 8).currentText() == 'Normal'
     assert dialog.table.cellWidget(0, 9).value() == 0
-    assert (dialog.table.cellWidget(0, 9).minimum(), dialog.table.cellWidget(0, 9).maximum()) == (-50, 50)
+    assert (dialog.table.cellWidget(0, 9).minimum(), dialog.table.cellWidget(0, 9).maximum()) == (-75, 300)
     dialog.table.cellWidget(0, 7).setText('👀')
     dialog.table.cellWidget(0, 8).setCurrentText('Whispered')
     dialog.table.cellWidget(0, 9).setValue(35)
@@ -1533,3 +1538,43 @@ def test_transport_summary_tracks_voice_and_language_controls(gui, window):
     assert 'Polish → Japanese' in window.transport.summary.text()
     assert 'Amazon Polly' in window.transport.summary.text()
     assert 'Mizuki' in window.transport.summary.text()
+
+
+def test_switching_voice_removes_unsupported_whisper_and_keeps_pitch(gui, window):
+    from vrchat_speech_assistant.roleplay_dialog import RoleplayDialog
+    from vrchat_speech_assistant.soundboard_dialog import SoundboardDialog
+    window.config['SPEECH'].update(provider='Amazon Polly', target_language='Polish')
+    window.target_language_combo.blockSignals(True)
+    window.target_language_combo.setCurrentText('Polish')
+    window.target_language_combo.blockSignals(False)
+    window._append_voices_for_selected_provider()
+    window.speech_voice_combo.setCurrentText('Ewa')
+    window.extra_tags_combo.setCurrentText('Whispered')
+    window.config['ROLEPLAY']['delivery'] = 'Confidential whisper'
+    window.speech_pitch_slider.setValue(300)
+    window.speech_voice_combo.setCurrentText('Ola [Neural]')
+    assert not window.extra_tags.get('whispered')
+    assert window.extra_tags_combo.findText('Whispered') == -1
+    assert window.config['ROLEPLAY']['delivery'] == 'Normal'
+    assert window.extra_tags['pitch'] == 300
+    roleplay = RoleplayDialog(window)
+    assert roleplay.delivery.findText('Confidential whisper') == -1
+    roleplay.reject()
+    board = SoundboardDialog(window)
+    provider, language, voice, delivery = [board.table.cellWidget(0, c) for c in (4, 2, 5, 8)]
+    provider.setCurrentText('Amazon Polly')
+    language.setCurrentText('Polish')
+    voice.setCurrentText('Ewa')
+    delivery.setCurrentText('Whispered')
+    assert delivery.currentText() == 'Whispered'
+    voice.setCurrentText('Ola [Neural]')
+    assert delivery.currentText() == 'Normal' and delivery.findText('Whispered') == -1
+    assert board.table.cellWidget(0, 9).isEnabled()
+    board.reject()
+    window.speech_voice_combo.setCurrentText('Ewa')
+    assert window.extra_tags_combo.findText('Whispered') >= 0
+    window.config['SPEECH']['provider'] = 'Piper (offline)'
+    window._append_voices_for_selected_provider()
+    assert window.speech_pitch_slider.isEnabled()
+    assert window.extra_tags_combo.findText('Whispered') == -1
+    window.speech_pitch_slider.setValue(0)

@@ -9,6 +9,7 @@ from xml.sax.saxutils import escape
 from vrchat_speech_assistant.diagnostics import DATA_DIR
 from vrchat_speech_assistant.output_control import check_cancelled, playback_callback, report_generated_audio
 from vrchat_speech_assistant.languages import POLLY_VOICES_ENGINE
+from vrchat_speech_assistant.audio_effects import pitched_audio, validate_pitch
 
 VOICES_PATH = DATA_DIR / "voices"
 
@@ -23,11 +24,16 @@ def polly_engine(voice):
     return POLLY_VOICES_ENGINE.get(voice.split(" ", 1)[0], "standard")
 
 
+def polly_styles(voice):
+    return ('None', 'Whispered') if polly_engine(voice) == 'standard' else ('None',)
+
+
 def validate_polly_style(voice, tags):
-    if polly_engine(voice) == "neural" and (tags.get("whispered") or tags.get("pitch")):
+    validate_pitch(tags.get('pitch', 0))
+    if tags.get('whispered') and 'Whispered' not in polly_styles(voice):
         raise UnsupportedSpeechStyle(
-            "This Neural voice does not support whisper or pitch. Set pitch to 0, tags to None "
-            "and delivery to Normal/Measured/Warning, or choose a Standard voice.")
+            "This Neural voice does not support whisper. Choose normal delivery or a Polly Standard voice. "
+            "Local pitch remains available.")
 
 
 class Polly:
@@ -83,12 +89,13 @@ class Polly:
                     ssml_tags = f'<amazon:effect name="whispered">{ssml_tags}</amazon:effect>'
                 if extra_tags.get("rate"):
                     ssml_tags = '<prosody rate="{}%">{}</prosody>'.format(extra_tags["rate"], ssml_tags)
-                if extra_tags.get("pitch"):
-                    ssml_tags = '<prosody pitch="{}%">{}</prosody>'.format(extra_tags["pitch"], ssml_tags)
             return f"<speak>{ssml_tags}</speak>"
 
         # Hash content/settings to avoid long filenames, collisions and transcript leaks.
-        cache_key = [text, extra_tags] if engine == "standard" else [text, extra_tags, engine]
+        # Version the dry cache so legacy files containing SSML pitch are never
+        # processed a second time. Local pitch changes reuse one AWS synthesis.
+        remote_tags = {key: value for key, value in (extra_tags or {}).items() if key in ('rate', 'whispered')}
+        cache_key = ['dry-v2', text, remote_tags, engine]
         filename = hashlib.sha256(json.dumps(cache_key, sort_keys=True).encode()).hexdigest()
         filepath = VOICES_PATH / voice_id / f"{filename}.ogg"
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -105,8 +112,9 @@ class Polly:
             with contextlib.closing(response["AudioStream"]) as stream:
                 temporary.write_bytes(stream.read())
             temporary.replace(filepath)
-        report_generated_audio(filepath)
-        read_ogg_file(str(filepath), output_device_name)
+        with pitched_audio(filepath, extra_tags) as final_audio:
+            report_generated_audio(final_audio)
+            read_ogg_file(str(final_audio), output_device_name)
 
     def test(self) -> bool:
         """Test Amazon Polly credentials.

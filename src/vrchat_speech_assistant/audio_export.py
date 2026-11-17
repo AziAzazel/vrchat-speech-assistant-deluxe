@@ -1,4 +1,4 @@
-"""Bounded, session-only retention of original synthesized audio."""
+"""Bounded, session-only retention of final synthesized audio, including effects."""
 from dataclasses import dataclass
 import os
 from pathlib import Path

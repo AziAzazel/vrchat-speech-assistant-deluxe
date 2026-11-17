@@ -37,7 +37,7 @@ class HistoryDialog(QtWidgets.QDialog):
         self.replay_button = QtWidgets.QPushButton("Repeat result")
         self.replay_button.clicked.connect(self.replay)
         self.save_audio_button = QtWidgets.QPushButton('Save speech audio…')
-        self.save_audio_button.setToolTip('Save the original generated WAV/OGG for the selected Available row, without another cloud request.')
+        self.save_audio_button.setToolTip('Save the generated WAV/OGG you heard, including local pitch, without another cloud request.')
         self.save_audio_button.clicked.connect(self.export_audio)
         clear = QtWidgets.QPushButton("Clear history")
         clear.clicked.connect(parent.clear_history)

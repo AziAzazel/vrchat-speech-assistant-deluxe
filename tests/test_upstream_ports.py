@@ -35,7 +35,7 @@ def test_new_neural_voice_uses_engine_and_supported_ssml(gui, monkeypatch, tmp_p
     assert '&lt;AI&gt; &amp;' in request['Text']
 
 
-@pytest.mark.parametrize('tags', [{'whispered': True}, {'pitch': -10}])
+@pytest.mark.parametrize('tags', [{'whispered': True}, {'whispered': True, 'pitch': -10}])
 def test_neural_unsupported_effect_rejected_before_aws_call(tags):
     polly = Polly.__new__(Polly)
     polly.client = Mock()
@@ -52,10 +52,12 @@ def test_standard_voice_keeps_whisper_pitch_and_explicit_engine(gui, monkeypatch
     polly = Polly.__new__(Polly)
     polly.client = Mock()
     polly.client.synthesize_speech.return_value = {'AudioStream': io.BytesIO(b'audio')}
+    from contextlib import nullcontext
+    monkeypatch.setattr(providers, 'pitched_audio', lambda path, tags: nullcontext(path))
     polly.speech('Hello', 'Justin', 'Cable', {'whispered': True, 'pitch': -10})
     request = polly.client.synthesize_speech.call_args.kwargs
     assert request['Engine'] == 'standard'
-    assert 'name="whispered"' in request['Text'] and 'pitch="-10%"' in request['Text']
+    assert 'name="whispered"' in request['Text'] and 'pitch=' not in request['Text']
 
 
 def test_beta_translation_options_do_not_change_english_polish():

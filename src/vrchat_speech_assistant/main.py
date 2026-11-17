@@ -399,7 +399,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.polly_fallback_checkbox.toggled.connect(self._on_fallback_changed)
         self.fallback_voice_combo = NoWheelComboBox()
         self.fallback_voice_combo.currentTextChanged.connect(self._on_fallback_voice_changed)
-        self.local_voice_note = QtWidgets.QLabel("Local voices use their natural style; whisper/pitch effects require Polly.")
+        self.local_voice_note = QtWidgets.QLabel("Local pitch keeps the tempo and is included in audio export. Whisper requires Polly Standard.")
         self.local_voice_note.setWordWrap(True)
         self.polly_capability_label = QtWidgets.QLabel()
         self.polly_capability_label.setWordWrap(True)
@@ -414,8 +414,9 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         ######### Speech pitch widget #########
         speech_pitch_label = QtWidgets.QLabel("Voice pitch:")
         self.speech_pitch_slider = NoWheelSlider(Qt.Horizontal)
-        self.speech_pitch_slider.setRange(-50, 50)
-        saved_pitch = max(-50, min(50, self.config["SPEECH"].getint("pitch")))
+        self.speech_pitch_slider.setRange(-75, 300)
+        self.speech_pitch_slider.setToolTip('Local pitch: -75% to +300% (two octaves down/up), without changing tempo. Included in audio export.')
+        saved_pitch = max(-75, min(300, self.config["SPEECH"].getint("pitch")))
         self.speech_pitch_slider.setValue(saved_pitch)
         if saved_pitch:
             self.extra_tags["pitch"] = saved_pitch
@@ -934,9 +935,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.save_config()
             self.log_info("Personality: " + name)
         elif action == "cycle_delivery":
-            modes = list(DELIVERIES)
-            if self.config["SPEECH"].get("provider") != "Amazon Polly":
-                modes.remove("Confidential whisper")
+            modes = self.supported_deliveries()
             current = settings.get("delivery")
             mode = modes[(modes.index(current) + 1) % len(modes)] if current in modes else "Normal"
             settings["delivery"] = mode
@@ -1234,8 +1233,25 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         voice = self.speech_voice_combo.currentText() if direct else self.fallback_voice_combo.currentText()
         engine = polly_engine(voice)
         prefix = "Polly" if direct else "Polly fallback"
-        note = "Neural: rate supported; whisper and pitch require a Standard voice." if engine == "neural" else "Standard: whisper and pitch available."
+        note = "Neural: local pitch and rate available; whisper unavailable." if engine == "neural" else "Standard: local pitch, rate and whisper available."
         self.polly_capability_label.setText(prefix + " — " + note)
+        from vrchat_speech_assistant.providers import polly_styles
+        styles = polly_styles(voice) if direct else ('None',)
+        selected = self.extra_tags_combo.currentText()
+        self.extra_tags_combo.blockSignals(True)
+        self.extra_tags_combo.clear()
+        self.extra_tags_combo.addItems(styles)
+        self.extra_tags_combo.setCurrentText(selected if selected in styles else 'None')
+        self.extra_tags_combo.blockSignals(False)
+        self.extra_tags_combo.setEnabled(len(styles) > 1)
+        self._on_extra_tags_combo_clicked(self.extra_tags_combo.currentText())
+        if self.config['ROLEPLAY'].get('delivery') not in self.supported_deliveries():
+            self.config['ROLEPLAY']['delivery'] = 'Normal'
+
+    def supported_deliveries(self):
+        speech = self.config['SPEECH']
+        whisper = speech.get('provider') == 'Amazon Polly' and polly_engine(speech.get('voice', '')) == 'standard'
+        return [name for name in DELIVERIES if whisper or name != 'Confidential whisper']
 
     def _append_voices_for_selected_provider(self):
         provider_name = self.config["SPEECH"].get("provider")
@@ -1247,7 +1263,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.fallback_voice_combo.setVisible(local)
         self.local_voice_note.setVisible(local)
         self.extra_tags_combo.setEnabled(not local)
-        self.speech_pitch_slider.setEnabled(not local)
+        self.speech_pitch_slider.setEnabled(True)
         self._remember_voice()
         language = self.config["SPEECH"].get("target_language")
         scope = (provider_name, language)

@@ -1,5 +1,6 @@
 """Local Windows SAPI voices, rendered to WAV for selected-device playback."""
 import contextlib
+from vrchat_speech_assistant.audio_effects import pitched_audio
 from vrchat_speech_assistant.output_control import cancellation_event, check_cancelled, OutputCancelled, report_generated_audio
 import tempfile
 from pathlib import Path
@@ -70,8 +71,9 @@ class WindowsSpeech:
                 self.render(text, voice_id, path)
             # Playback failure is deliberately not a synthesis failure: never replay
             # a partially heard utterance through an online fallback.
-            report_generated_audio(path)
-            read_ogg_file(str(path), output_device_name)
+            with pitched_audio(path, extra_tags) as final_audio:
+                report_generated_audio(final_audio)
+                read_ogg_file(str(final_audio), output_device_name)
 
 
 class UnavailableWindowsSpeech:

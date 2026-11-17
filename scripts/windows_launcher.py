@@ -79,7 +79,7 @@ def smoke_test(report):
         from vrchat_speech_assistant.audio_export import read_generated_audio, save_generated_audio
         exported_clips = []
         with generated_audio_scope(lambda source: exported_clips.append(read_generated_audio(source))):
-            speech.speech('Audio export verification.', next(iter(speech.voices)), None, {'rate': 85})
+            speech.speech('Audio export verification.', next(iter(speech.voices)), None, {'rate': 85, 'pitch': 100})
         assert exported_clips and exported_clips[0].extension == '.wav'
         exported_path = media_wav.with_name('export.wav')
         save_generated_audio(exported_clips[0], exported_path)
@@ -191,7 +191,8 @@ def smoke_test(report):
     assert window.global_shortcuts_checkbox.isChecked()
     window.resize(1350, 800)
     app.processEvents()
-    from vrchat_speech_assistant.ui_smoke import verify_workspace
+    from vrchat_speech_assistant.ui_smoke import verify_workspace, verify_local_pitch
+    verify_local_pitch(Path(os.environ['APPDATA']))
     verify_workspace(window, app)
     window.speech_pitch_slider.setValue(-15)
     assert window.config["SPEECH"]["pitch"] == "-15"
@@ -297,7 +298,7 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "persistent_status": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "tabbed_workspace": "passed", "compact_mode": "passed", "shortcut_presets": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "local_pitch_export": "passed", "persistent_status": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "tabbed_workspace": "passed", "compact_mode": "passed", "shortcut_presets": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
 
 
 def main():

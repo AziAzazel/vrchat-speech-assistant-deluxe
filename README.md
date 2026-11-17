@@ -18,6 +18,7 @@ This is vibe-coded but works better than the original in my opinion. If there ar
 
 - Microphone recognition and manual text-to-speech, including pasted ChatGPT answers.
 - Local Windows desktop voices, optional external Piper, and Amazon Polly with optional fallback.
+- Local pitch from −75% to +300% without changing tempo, including Neural voices and exported audio.
 - DeepL translation, nickname corrections and a speech-only pronunciation dictionary.
 - Chatbox text before speech starts, with paged preview and separate display text.
 - Global hotkeys, editable transcript preview, language switching and Stop speaking.

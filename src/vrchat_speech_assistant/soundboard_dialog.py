@@ -23,7 +23,7 @@ class SoundboardDialog(HotkeySettingsDialog):
             'Each shortcut sends exactly the saved phrase, without translation, random endings or personality effects. '
             'Choose a voice that speaks the selected language. Japanese example: ぽい (poi). '
             'Chatbox text can differ from speech; leave it blank to show the spoken text. '
-            'Whisper and pitch (-50 to +50%) require a Polly Standard voice (e.g. Mizuki), not Windows/Piper or Neural voices. '
+            'Local pitch (-75 to +300%) keeps the tempo on all speech providers, including Neural. Whisper requires Polly Standard (e.g. Mizuki). '
             'Shortcuts are paused while these settings are open. Clear a shortcut to disable it. Recordings can use timed SRT captions. '
             'Polly needs your AWS keys; Windows voices must be installed; Piper uses the configured model for that language.')
         note.setWordWrap(True)
@@ -74,10 +74,10 @@ class SoundboardDialog(HotkeySettingsDialog):
         self.table.setCellWidget(row, 7, chatbox)
         self.table.setCellWidget(row, 8, delivery)
         pitch = QtWidgets.QSpinBox()
-        pitch.setRange(-50, 50)
+        pitch.setRange(-75, 300)
         pitch.setSuffix('%')
         pitch.setValue(preset.get('pitch', 0))
-        pitch.setToolTip('Pitch shift: -50 to +50%. 0 keeps the natural pitch. Requires a Polly Standard voice; can be combined with Whispered delivery.')
+        pitch.setToolTip('Local pitch: -75 to +300%, without changing tempo. All speech providers; exported audio includes the effect.')
         self.table.setCellWidget(row, 9, pitch)
         favorite = QtWidgets.QCheckBox('★')
         favorite.setChecked(preset.get('favorite', False))
@@ -93,6 +93,14 @@ class SoundboardDialog(HotkeySettingsDialog):
         if not IS_WINDOWS:
             provider.model().item(provider.findText('Windows Speech')).setEnabled(False)
         self.table.setCellWidget(row, 5, voice)
+        def refresh_styles():
+            from vrchat_speech_assistant.providers import polly_styles
+            whisper = provider.currentText() == 'Amazon Polly' and 'Whispered' in polly_styles(voice.currentText())
+            selected = delivery.currentText()
+            delivery.clear()
+            delivery.addItems(DELIVERIES if whisper else ('Normal',))
+            delivery.setCurrentText(selected if whisper else 'Normal')
+            delivery.setEnabled(not recording and output.currentText() != 'Chatbox only' and whisper)
         def refresh():
             selected = voice.currentText() or preset['voice']
             voice.clear()
@@ -123,11 +131,12 @@ class SoundboardDialog(HotkeySettingsDialog):
             provider.setEnabled(not recording and output.currentText() != 'Chatbox only')
             language.setEnabled(not recording)
             chatbox.setEnabled(not recording and output.currentText() != 'Voice only')
-            delivery.setEnabled(not recording and output.currentText() != 'Chatbox only')
+            refresh_styles()
             pitch.setEnabled(not recording and output.currentText() != 'Chatbox only')
         language.currentTextChanged.connect(refresh)
         provider.currentTextChanged.connect(refresh)
         output.currentTextChanged.connect(refresh)
+        voice.currentTextChanged.connect(refresh_styles)
         refresh()
         files = QtWidgets.QPushButton('Files / SRT…' if recording else '—')
         files.recording = dict(preset) if recording else None

@@ -81,9 +81,9 @@ second, potentially duplicated online utterance. An unavailable local engine
 can also fall back if this option is enabled. Failures and fallback use appear
 in diagnostic logs. With fallback off, failures report an error locally.
 
-Windows voices use their natural pitch and do not support Polly's whispered
-style here. Pitch/whisper controls are disabled for Windows Speech; select Polly
-to use them. Previously selected effects can still apply to Polly fallback.
+Windows voices support local pitch without changing tempo. The same effect is
+applied after Polly fallback synthesis and is included in audio export.
+Whisper is available only with a Polly Standard primary voice.
 
 ## Offline voices with Piper
 
@@ -106,7 +106,7 @@ Piper synthesizes locally on CPU and uses the selected audio output device.
 It makes no model downloads or cloud requests itself. Model selection and
 backend installation are required before first use. Optional Polly fallback
 works just as for Windows Speech. Piper here uses natural model delivery;
-it does not implement Polly's pitch or whispered styles. Genuine whispered
+it supports local pitch without changing tempo, but not whispered delivery. Genuine whispered
 speech needs a voice/model trained for that delivery, rather than simply
 lowering playback volume. Polly's existing whispered style remains available.
 Kokoro is another potential offline provider, but is not integrated here.
@@ -121,7 +121,7 @@ be tested with your downloaded model.
 - Paste a ChatGPT answer or type into the main editor, then click
   **Speak / send now**. Listening does not need to be enabled. Enable Speech and
   select a Windows voice, or configure AWS credentials for Polly. The selected
-  voice and output device apply; pitch and whispered effects require Polly. When source and target languages differ, the existing
+  voice and output device apply; local pitch works with every speech provider, while whisper requires Polly Standard. When source and target languages differ, the existing
   DeepL translator applies too. Paste at most 2500 characters per message.
 - **Send manual text to Chatbox** independently controls manual text
   delivery to OSC. It starts unchecked. Recognition keeps the existing Chatbox
@@ -333,8 +333,13 @@ Specific games, overlays and keyboard utilities still need a user hardware test.
 Voice selection is remembered for each **provider + target language**, whether
 you use a language dropdown or the quick-switch hotkey. Polly fallback voice
 choices are remembered by target language too. Voice pitch updates live and is saved when a dragged slider is released
-(or immediately for keyboard/programmatic changes), then restored at launch, including the actual Polly synthesis setting. Local
-providers still do not support Polly's pitch effect.
+(or immediately for keyboard/programmatic changes), then restored at launch.
+Pitch runs locally after synthesis on Windows Speech, Piper and Polly, including
+Neural voices. The range is **−75% to +300%** (two octaves down/up); **0%**
+preserves the original audio. It keeps the duration and selected delivery tempo.
+History exports the processed WAV that was played; an unchanged Polly clip can
+still export its original OGG. Changing local pitch reuses Polly's dry cache
+without another AWS synthesis request. Older SSML-pitched cache files are not reused.
 
 The workspace uses a single conversation column and tab-local configuration
 forms. Language buttons and favorite reactions reflow with width. The last normal
@@ -368,7 +373,7 @@ Windows SAPI rate changes are approximate; Piper changes phoneme length and
 Polly uses SSML rate. Malfunction is a deliberate spoken stutter, not a voice
 conversion or electronic distortion filter. It does not duplicate text in the
 chatbox. Whisper on a local provider reports a clear message rather than silently
-switching to a paid online service. Cycling delivery skips whisper on local
+switching to a paid online service. Cycling delivery skips whisper on local and Neural
 providers. Changing personality selects its default delivery; you can then
 choose another delivery yourself. Normal retains any manually selected legacy
 Polly effect; set **Extra tags → None** to clear that effect.
@@ -428,7 +433,7 @@ mean every output was delivered: one output may already have arrived when the ot
   draft first.
 - **Save speech audio…** saves the last generated speech from the row marked
   **Available**, without synthesis or another Polly request. Windows Speech and
-  Piper export WAV; Polly exports OGG. Delivery settings are already part of the
+  Piper export WAV; Polly exports OGG at pitch 0% or processed WAV otherwise. Delivery and local pitch settings are already part of the
   file; there is no MP3 conversion. The complete generated clip remains available
   even after Stop or playback failure. Only one clip (up to 32 MiB) is retained in
   memory. New generated audio replaces it; text-only attempts keep it. Clear
@@ -497,10 +502,11 @@ Whisper requires a Polly Standard voice; Windows/Piper and Polly Neural voices
 cannot provide this effect. Unsupported spoken combinations are rejected before
 output. Existing rows default to Normal delivery and matching speech/chatbox text.
 
-**Pitch** sets the saved phrase's pitch from **−50% to +50%**, independently of
+**Pitch** sets the saved phrase's pitch from **−75% to +300%**, independently of
 the main Voice pitch slider. **0%** keeps the natural pitch and is the default for
-older rows. Pitch can be combined with Whispered delivery. A nonzero value needs
-a **Polly Standard** voice, such as Mizuki; use 0% for Windows/Piper or Polly Neural.
+older rows. Pitch works with Windows Speech, Piper and both Standard/Neural Polly
+voices, without changing tempo, and is included in audio export. It can be
+combined with Whispered delivery on **Polly Standard** voices, such as Mizuki.
 Chatbox-only entries retain the setting without applying it. Pitch and delivery
 are disabled for recordings, which keep their original audio.
 
@@ -602,9 +608,10 @@ explain the shared baseline, incorporated fixes and experimental branches.
 - Polly catalogue: 100 distinct voice IDs, including Polish **Ola [Neural]**.
   New voices select the required engine. Existing voice labels, saved selections
   and Standard effects remain compatible.
-- Neural voices support rate, but cannot use whisper or pitch. The UI explains
-  this and rejects incompatible settings before a synthesis request; choose a
-  Standard voice for those effects. The same guard applies to Polly fallback.
+- Neural voices support rate and local pitch. SSML pitch is never sent to Polly.
+  Whisper is offered only for Standard voices in the voice, Roleplay and Soundboard
+  controls. Switching to Neural resets an active whisper style to Normal; stale
+  unsupported requests are rejected before AWS is contacted, including fallback.
 - Diagnostic logs include durations for recognition, translation, synthesis with
   playback, and OSC delivery, without recording submitted text or credentials.
 

@@ -2,6 +2,7 @@
 from pathlib import Path
 from vrchat_speech_assistant.hotkeys import parse_hotkey
 from vrchat_speech_assistant.languages import DEEPL
+from vrchat_speech_assistant.audio_effects import validate_pitch
 
 OUTPUTS = ('Voice only', 'Chatbox only', 'Voice + chatbox')
 PROVIDERS = ('Amazon Polly', 'Windows Speech', 'Piper (offline)')
@@ -39,11 +40,10 @@ def validate_presets(presets, other_keys=()):
             if delivery not in DELIVERIES:
                 raise ValueError('Choose a supported phrase delivery.')
             pitch = preset.get('pitch', 0)
-            if type(pitch) is not int or not -50 <= pitch <= 50:
-                raise ValueError('Phrase pitch must be a whole number between -50 and +50%.')
-            if (delivery == 'Whispered' or pitch) and preset['output'] != 'Chatbox only':
+            validate_pitch(pitch)
+            if delivery == 'Whispered' and preset['output'] != 'Chatbox only':
                 if preset['provider'] != 'Amazon Polly':
-                    raise ValueError('Whisper and pitch require an Amazon Polly Standard voice, such as Mizuki. Use Normal delivery and pitch 0 for local voices.')
+                    raise ValueError('Whisper requires an Amazon Polly Standard voice, such as Mizuki. Local pitch works with every speech provider.')
                 from vrchat_speech_assistant.providers import validate_polly_style
                 validate_polly_style(preset['voice'], phrase_tags(preset))
         if recording:

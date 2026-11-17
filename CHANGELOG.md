@@ -8,6 +8,13 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### 1.32.0rc1 — Local pitch and supported Polly styles
+
+- Apply pitch locally to Windows Speech, Piper and Standard/Neural Polly audio without changing duration or delivery tempo. Extend main and Soundboard pitch to −75% through +300% (two octaves down/up).
+- Retain and export the processed WAV that is played. Reuse dry Polly synthesis across pitch changes; separate the new dry cache from older SSML-pitched files.
+- Stop sending SSML pitch to Polly. Offer whisper only with Standard Polly voices, reset incompatible selections on voice/provider changes, and guard stale unsupported requests before AWS calls.
+- Add measured frequency/duration, stereo, cancellation, export and provider regression tests, plus local pitch/export checks required by both packaged platform smoke tests.
+
 ### [1.31.0rc1](https://github.com/AziAzazel/vrchat-speech-assistant-deluxe/releases/tag/v1.31.0rc1) — Conversation-first workspace, compact mode and quick binds
 
 - Replace the unequal card columns with Conversation, Soundboard, History, Voice & languages, Roleplay and Settings tabs. Keep listening, Stop, current voice/language summary and four highlighted language presets fixed above the tabs, with activity/issues fixed below.

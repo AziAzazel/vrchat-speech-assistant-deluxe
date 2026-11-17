@@ -1,4 +1,31 @@
 """Checks shared by the frozen Windows and Linux application smoke tests."""
+def verify_local_pitch(directory):
+    """Exercise the bundled decoder, DSP and final-audio export without AWS."""
+    import io
+    from pathlib import Path
+    import numpy as np
+    import soundfile as sf
+    from vrchat_speech_assistant.audio_effects import pitched_audio
+    from vrchat_speech_assistant.audio_export import read_generated_audio, save_generated_audio
+    from vrchat_speech_assistant.providers import validate_polly_style
+    rate = 22050
+    samples = .25 * np.sin(2 * np.pi * 440 * np.arange(rate * 2) / rate)
+    source = Path(directory) / 'pitch-source.ogg'
+    sf.write(str(source), samples, rate, format='OGG', subtype='VORBIS')
+    for pitch in (-75, 100, 300):
+        validate_polly_style('Ola [Neural]', {'pitch': pitch})
+        with pitched_audio(source, {'pitch': pitch}) as processed:
+            clip = read_generated_audio(processed)
+            export = Path(directory) / 'pitch-export.wav'
+            save_generated_audio(clip, export)
+            assert export.read_bytes() == processed.read_bytes()
+        audio, actual_rate = sf.read(io.BytesIO(clip.data))
+        assert len(audio) == len(samples) and actual_rate == rate
+        middle = audio[rate//2:3*rate//2]
+        frequency = np.argmax(abs(np.fft.rfft(middle * np.hanning(len(middle)))))
+        assert abs(frequency - 440 * (1 + pitch/100)) < 3
+
+
 def verify_workspace(window, app):
     from vrchat_speech_assistant.shortcut_conflicts import known_conflicts
     assert window.tabs.count() == 6

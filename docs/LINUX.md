@@ -28,8 +28,8 @@ The app uses Qt's X11 backend through XWayland by default.
 
 ## Voices
 
-- **Amazon Polly:** enter your own AWS credentials. Standard voices retain pitch
-  and whisper; Neural limitations are the same as Windows. DeepL is optional and
+- **Amazon Polly:** enter your own AWS credentials. All voices support local pitch without changing tempo;
+  whisper is offered only for Standard voices. DeepL is optional and
   only used for translation. Recognition still uses Google's online service.
 - **Piper (offline):** the default Linux provider. Install an external Linux Piper
   executable, select it with **Choose external Piper backend…**, and select your
@@ -38,7 +38,7 @@ The app uses Qt's X11 backend through XWayland by default.
 - **Windows Speech:** unavailable on Linux. Imported main Windows Speech settings
   switch to Piper; edit any saved Soundboard Windows voices to Piper or Polly.
 
-Soundboard, favorite reactions, independent chatbox text, pitch/whisper for Polly,
+Soundboard, favorite reactions, independent chatbox text, local pitch for every speech provider, Polly Standard whisper,
 manual input, transcript editing, history, pronunciation, SRT and WAV/MP3 playback
 use the same application code as Windows.
 
