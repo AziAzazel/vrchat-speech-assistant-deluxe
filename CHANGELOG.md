@@ -8,6 +8,11 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### 1.32.0rc3 — Section heading layout fix
+
+- Reserve space above the first settings row for styled section titles. Scale the gap with the application font and update it when the font/style changes, preventing headings from overlapping controls in Voice & languages, Roleplay and Settings.
+- Keep untitled nested Speech/Chatbox forms compact. Add coverage for narrow/wide layouts, larger fonts and disabled sections, plus heading checks in both packaged platform smoke tests.
+
 ### 1.32.0rc2 — Hybrid Polly pitch and a clearer slider
 
 - Prefer SSML pitch for Polly Standard from −50% through +50%; use the entire requested local shift outside that range. Neural, Windows Speech and Piper always use local pitch. Keep remotely pitched and dry cache entries separate, and export the final audio without applying pitch twice.

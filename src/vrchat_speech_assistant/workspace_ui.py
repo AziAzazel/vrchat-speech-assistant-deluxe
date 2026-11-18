@@ -79,9 +79,29 @@ def page_layout():
     return page, layout
 
 
+class SectionGroupBox(QtWidgets.QGroupBox):
+    """Keep the styled title clear of the first row at any application font."""
+
+    def reserve_heading_space(self):
+        if self.layout() is not None:
+            # QGroupBox's styled title does not reliably contribute to the
+            # layout's contents margins. Reserve its text height plus the
+            # stylesheet's title padding/border and a gap explicitly.
+            self.layout().setContentsMargins(12, self.fontMetrics().height() + 18, 12, 12)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QtCore.QEvent.FontChange, QtCore.QEvent.StyleChange):
+            self.reserve_heading_space()
+
+
 def form_group(title, rows):
-    group = QtWidgets.QGroupBox(title)
+    # The title is painted in the margin; reserve space only for titled cards,
+    # not the untitled form containers nested inside Speech/Chatbox settings.
+    group = SectionGroupBox(title) if title else QtWidgets.QGroupBox()
     form = QtWidgets.QFormLayout(group)
+    if title:
+        group.reserve_heading_space()
     form.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
     form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
     for label, widget in rows:

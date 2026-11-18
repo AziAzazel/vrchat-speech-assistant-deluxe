@@ -61,3 +61,32 @@ def verify_workspace(window, app):
     assert window.stop_speech_button.property('shortcut_action') == 'stop_speaking'
     assert len(window.language_preset_buttons) == 4
     assert known_conflicts('Ctrl+N') and known_conflicts('Alt+F4')
+    verify_section_headings(window, app)
+
+
+def verify_section_headings(window, app):
+    """Check real styled settings pages in both frozen platform builds."""
+    from PySide6 import QtCore, QtWidgets
+    previous_size, previous_tab = window.size(), window.tabs.currentIndex()
+    try:
+        for width in (650, 1100):
+            window.resize(width, 800)
+            for tab in ('Voice & languages', 'Roleplay', 'Settings'):
+                window.show_workspace_tab(tab)
+                app.processEvents()
+                groups = [group for group in window.findChildren(QtWidgets.QGroupBox)
+                          if group.isVisible() and group.title()]
+                assert groups, tab
+                for group in groups:
+                    option = QtWidgets.QStyleOptionGroupBox()
+                    group.initStyleOption(option)
+                    title = group.style().subControlRect(QtWidgets.QStyle.CC_GroupBox, option,
+                                                        QtWidgets.QStyle.SC_GroupBoxLabel, group)
+                    for widget in group.findChildren(QtWidgets.QWidget):
+                        if widget.isVisible():
+                            point = widget.mapTo(group, QtCore.QPoint())
+                            assert point.y() > title.bottom() + 6, group.title()
+    finally:
+        window.resize(previous_size)
+        window.tabs.setCurrentIndex(previous_tab)
+        app.processEvents()
