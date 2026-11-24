@@ -91,6 +91,7 @@ class RoleplayDialog(HotkeySettingsDialog):
         bindings = {}
         try:
             seen = {parse_hotkey(preset['key']) for preset in self.window.soundboard_presets if preset['key']}
+            seen.update(parse_hotkey(key) for _, key in self.window.live_studio.configured_hotkeys() if key)
             for row, action in enumerate(ACTIONS):
                 sequence = self.table.cellWidget(row, 1).keySequence().toString(QtGui.QKeySequence.PortableText)
                 if sequence:

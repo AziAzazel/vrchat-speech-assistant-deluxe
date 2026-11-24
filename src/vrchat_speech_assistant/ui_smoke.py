@@ -28,7 +28,7 @@ def verify_local_pitch(directory):
 
 def verify_workspace(window, app):
     from vrchat_speech_assistant.shortcut_conflicts import known_conflicts
-    assert window.tabs.count() == 6
+    assert window.tabs.count() == 7
     # Frozen builds must include the hybrid routing and resettable control too.
     from vrchat_speech_assistant.pitch_routing import pitch_route
     assert pitch_route('Amazon Polly', 'Justin', 50) == 'ssml'
@@ -62,6 +62,33 @@ def verify_workspace(window, app):
     assert len(window.language_preset_buttons) == 4
     assert known_conflicts('Ctrl+N') and known_conflicts('Alt+F4')
     verify_section_headings(window, app)
+
+
+def verify_live_studio(window, app, directory):
+    from copy import deepcopy
+    import json
+    from pathlib import Path
+    import subprocess
+    from vrchat_speech_assistant.live_controller import worker_command
+    from vrchat_speech_assistant.live_smoke import verify_dsp
+    studio=window.live_studio
+    selected,patch=studio.selected,deepcopy(studio.patch)
+    try:
+        studio.preset.setCurrentIndex(studio.preset.findData('b1'))
+        assert studio.patch['effects']['pitch']['semitones']==5
+        assert studio.patch['effects']['tune']['strength']==100
+        studio.effect_controls['pitch','formant'].number.setValue(4)
+        assert studio.snapshot()['patch']['effects']['pitch']['formant']==4
+        assert not studio.controller.active
+        app.processEvents()
+        report=Path(directory)/'live-devices.json'
+        result=subprocess.run(worker_command('--live-voice-probe',report),stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
+        assert result.returncode==0
+        assert isinstance(json.loads(report.read_text()),list)
+        verify_dsp()
+    finally:
+        studio.selected=selected;studio.patch=patch;studio.rebuild_presets();studio.load_controls()
 
 
 def verify_section_headings(window, app):

@@ -19,7 +19,7 @@ from chatbox_osc import FONTS, write_chatbox
 from vrchat_speech_assistant.audio_devices import get_device_snapshot
 from vrchat_speech_assistant.listener import BackgroundListener
 from vrchat_speech_assistant.output_control import output_scope, playback_scope, check_cancelled, OutputCancelled, CancellableOSC
-from vrchat_speech_assistant.output_control import generated_audio_scope
+from vrchat_speech_assistant.output_control import generated_audio_scope, audio_delivery_scope
 from vrchat_speech_assistant.audio_export import read_generated_audio, AudioRetentionError
 from vrchat_speech_assistant.live_chatbox import LiveChatbox, ChatboxOutputError
 from vrchat_speech_assistant.chatbox_preview import ChatboxPreview, format_chatbox
@@ -724,6 +724,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self._map_command("/target_language", self._server_change_target_language)
         self._map_command("/formality", self._server_change_formality)
         self._map_command("/roleplay", lambda _, action: self.roleplay_action(action))
+        self._map_command('/studio/effect', self.live_studio.osc_effect)
+        self._map_command('/studio/preset', self.live_studio.osc_preset)
         self._map_command("/speech", self._server_toggle_speech)
         self._map_command("/speech_provider", self._server_change_speech_provider)
         self._map_command("/tag", self._server_change_extra_tags)
@@ -819,7 +821,8 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
     def configured_hotkeys(self):
         settings = self.config['ROLEPLAY']
         return ([(action, settings.get('key_' + action, DEFAULT_HOTKEYS[action])) for action in ACTIONS]
-                + [(f'soundboard_{index}', preset['key']) for index, preset in enumerate(self.soundboard_presets)])
+                + [(f'soundboard_{index}', preset['key']) for index, preset in enumerate(self.soundboard_presets)]
+                + (self.live_studio.configured_hotkeys() if hasattr(self,'live_studio') else []))
 
     def validate_action_shortcut(self, action, sequence):
         configured = dict(self.configured_hotkeys())
@@ -843,6 +846,10 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
             self.soundboard_presets[int(action.split('_')[1])]['key'] = sequence
             self.config['SOUNDBOARD']['presets'] = json.dumps(self.soundboard_presets, ensure_ascii=False)
             self._refresh_favorites()
+        elif action.startswith('studio_preset_'):
+            self.live_studio.store['hotkeys'][action[len('studio_preset_'):]] = sequence
+            self.live_studio.persist()
+            self.live_studio.load_controls()
         else:
             self.config['ROLEPLAY']['key_' + action] = sequence
         self.save_config()
@@ -903,7 +910,13 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 self.shortcuts.append(shortcut)
 
     def roleplay_action(self, action):
+        if action == 'studio_ptt_release' and hasattr(self, 'live_studio'):
+            self.live_studio.set_ptt(False)
+            return
         if self._closing or self._hotkey_edit_depth:
+            return
+        if action.startswith('studio_'):
+            self.live_studio.action(action)
             return
         settings = self.config["ROLEPLAY"]
         if action.startswith("soundboard_"):
@@ -1854,7 +1867,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
                 speaking = bool(provider and speech["voice"] != "None")
                 if speaking:
                     stage = "Synthesis/audio playback"
-                    with stage_timer("synthesis_and_playback"), playback_scope(captions.progress if captions and len(captions.pages) > 1 else None), generated_audio_scope(retain_audio):
+                    with stage_timer("synthesis_and_playback"), playback_scope(captions.progress if captions and len(captions.pages) > 1 else None), generated_audio_scope(retain_audio), audio_delivery_scope(self.live_studio.controller.route_tts):
                         provider.speech(spoken, speech["voice"], speech["output_device"], tags)
                 check_cancelled()
                 if captions:
@@ -2051,6 +2064,7 @@ class VRCSpeechAssistantWindow(QtWidgets.QWidget):
         self.preview_timer.stop()
         self.countdown_timer.stop()
         self.device_timer.stop()
+        self.live_studio.close_studio()
         if self.global_hotkeys:
             self.global_hotkeys.stop()
         if self.listener:

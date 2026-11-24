@@ -12,3 +12,4 @@ pywin32==311; sys_platform == "win32"
 pytest==9.2.0
 numpy==1.26.4
 soundfile==0.13.1
+scipy==1.14.1

@@ -38,6 +38,11 @@ def smoke_test(report_path):
         from vrchat_speech_assistant.ui_smoke import verify_local_pitch
         verify_local_pitch(folder)
         checks['local_pitch_export'] = 'passed'
+        stage('live_voice_studio_routing')
+        from vrchat_speech_assistant.live_smoke import verify_linux_routing
+        live_report=verify_linux_routing(folder/'studio-routing')
+        Path(report_path).with_name('live-studio-report.json').write_text(json.dumps(live_report,indent=2))
+        checks['live_voice_routing']='passed'
         stage("virtual_microphone")
         route.create()
         assert any(d['name'] == SOURCE for d in json.loads(pulse('-f', 'json', 'list', 'sources')))
@@ -87,8 +92,10 @@ def smoke_test(report_path):
         window.separate_chatbox.setChecked(True)
         window.custom_chatbox_text.setPlainText('*looks suspicious*')
         assert window.chatbox_preview.pages == ['*looks suspicious*']
-        from vrchat_speech_assistant.ui_smoke import verify_workspace
+        from vrchat_speech_assistant.ui_smoke import verify_workspace, verify_live_studio
         verify_workspace(window, app)
+        verify_live_studio(window, app, folder)
+        checks.update(live_voice_dsp='passed',live_voice_ui='passed',live_worker_probe='passed')
         checks['tabbed_workspace'] = 'passed'
         checks['compact_mode'] = 'passed'
         checks['shortcut_presets'] = 'passed'

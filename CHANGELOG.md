@@ -8,6 +8,15 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### 1.33.0rc1 — Live Voice Studio (experimental offline DSP)
+
+- Add a seventh Studio tab for direct live microphone processing, independent of speech recognition. Isolate PortAudio in an authenticated local worker, keep effects off the Qt thread, retain explicit device choices and retry ordinary disconnects without rerouting to another endpoint.
+- Add independent streaming pitch/formant shift, YIN F0 detection and real hard/scale-based Auto-Tune, vocoder carriers/bands, four separately pitched/panned/delayed harmony voices, and 14 editable/favorite DSP presets with versioned JSON import/export.
+- Add gate/reduction, gains, vibrato, chorus, distortion, bitcrusher, random granular glitch, reverb, delay, EQ, compressor, limiting and configurable ordering. Live parameter snapshots preserve streams, adjacent spectral stages share an FFT, and bypass/preset transitions reseed buffers instead of replaying stale syllables.
+- Add separate monitoring, mic activity/level/waveform/note/load indicators, measured DSP time and clearly estimated total latency, processed test recording, optional TTS/mic mixing, PTT, panic mute and Studio shortcuts/OSC in the shared conflict registry.
+- Keep optional RVC/DirectML and VST3 explicitly unavailable. Base DSP is CPU/local/offline; no models or cloud calls are introduced. New SciPy/NumPy dependencies preserve BSD notices; source development uses Python 3.10–3.12 (release builds use 3.12).
+- Require frozen DSP/UI/worker checks on both platforms and real Linux PortAudio/PulseAudio microphone, tuning, TTS, recording and panic checks before publishing. Hardware VRChat/VB-CABLE listening/performance and reconnection remain target-machine checks; ship the measured Linux report alongside release assets.
+
 ### 1.32.0rc3 — Section heading layout fix
 
 - Reserve space above the first settings row for styled section titles. Scale the gap with the application font and update it when the font/style changes, preventing headings from overlapping controls in Voice & languages, Roleplay and Settings.

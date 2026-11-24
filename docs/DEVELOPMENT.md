@@ -64,3 +64,13 @@ routing, packaging and current platform limits. `scripts/build_linux.py` creates
 an x86-64 portable directory/archive on Ubuntu 22.04. The release workflow tests
 Windows and Linux and publishes both only after both jobs pass. Linux's packaged
 smoke uses a real PulseAudio server, virtual-microphone capture and local OSC UDP.
+
+
+## Live Voice Studio
+
+See [architecture, licensing and the test matrix](LIVE_VOICE_STUDIO.md#development-and-licenses).
+The Studio worker owns PortAudio in a separate process; never create a PortAudio
+context in the Qt process beside speech recognition. Parameter snapshots must not
+restart streams. Both frozen apps validate the worker probe, DSP and UI. Linux
+also tests a synthetic microphone through real PulseAudio/PortAudio endpoints,
+including TTS routing and Panic, and publishes `live-studio-report.json`.

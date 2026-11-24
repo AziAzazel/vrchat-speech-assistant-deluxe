@@ -61,6 +61,20 @@ def report_generated_audio(path):
         callback(path)
 
 
+@contextmanager
+def audio_delivery_scope(router):
+    previous = getattr(_state, 'audio_delivery', None)
+    _state.audio_delivery = router
+    try:
+        yield
+    finally:
+        _state.audio_delivery = previous
+
+
+def audio_delivery_callback():
+    return getattr(_state, 'audio_delivery', None)
+
+
 class CancellableOSC:
     def __init__(self, client):
         self.client = client

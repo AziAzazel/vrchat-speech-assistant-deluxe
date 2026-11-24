@@ -9,7 +9,7 @@ import sys
 
 def send_action(action):
     from vrchat_speech_assistant.roleplay import ACTIONS
-    if action not in ACTIONS and not re.fullmatch(r'soundboard_(?:[0-9]|[12][0-9]|3[01])', action):
+    if action not in ACTIONS and action != 'studio_ptt_release' and not re.fullmatch(r'studio_preset_(?:b[0-9]{1,2}|u[0-9a-f]{32})', action) and not re.fullmatch(r'soundboard_(?:[0-9]|[12][0-9]|3[01])', action):
         raise ValueError('Use a Roleplay action name or soundboard_0 through soundboard_31.')
     from pythonosc.udp_client import SimpleUDPClient
     SimpleUDPClient('127.0.0.1', 7001).send_message('/roleplay', action)
@@ -31,6 +31,10 @@ def install_desktop():
 
 
 def main(argv=None):
+    arguments = sys.argv[1:] if argv is None else argv
+    if len(arguments) == 2 and arguments[0] in ('--live-voice-worker','--live-voice-probe'):
+        from vrchat_speech_assistant.live_worker import main as live_main
+        return live_main(arguments)
     os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
     os.environ.setdefault('QT_QPA_PLATFORM', 'xcb')
     parser = argparse.ArgumentParser(description='VRChat Speech Assistant Deluxe for Linux')

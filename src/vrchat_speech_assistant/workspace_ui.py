@@ -296,6 +296,11 @@ def build_workspace(window, outer, refresh_button, clear_button):
         settings_layout.addWidget(action_button('Linux virtual microphone / routing…', w.edit_linux_audio))
     settings_layout.addStretch()
     add('Settings', scroll_page(settings))
+    from vrchat_speech_assistant.live_studio import LiveStudio
+    w.live_studio = LiveStudio(w)
+    add('Live Voice Studio', scroll_page(w.live_studio))
+    w.tabs.currentChanged.connect(lambda index: w.live_studio.activate()
+                                 if w.tabs.currentWidget() is w.tab_pages['Live Voice Studio'] else None)
     w.transport.compact.toggled.connect(w._set_compact_mode)
     w.transport.compact.setChecked(w.config['UI'].getboolean('compact', fallback=False))
     w._apply_workspace_visibility()

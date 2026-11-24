@@ -636,3 +636,10 @@ keys in plain text: keep it private. Dictionary/rule files are stored beside it;
 logs are in the `logs` subdirectory. Session history stays in memory only.
 
 [Back to README](../README.md) · [Release history](../CHANGELOG.md)
+
+
+## Live Voice Studio
+
+For direct offline microphone processing, real Auto-Tune, independent pitch/formant,
+vocoder, harmony, presets, monitoring, TTS mixing and shortcuts, see the
+[Live Voice Studio guide](LIVE_VOICE_STUDIO.md). This is separate from speech recognition.

@@ -66,6 +66,7 @@ class GlobalHotkeys:
         # Ensure this worker owns a Win32 message queue before registration.
         api.PeekMessageW(ctypes.byref(message), None, 0, 0, 0)
         registered = []
+        held = {}
         try:
             for ident, (action, sequence) in enumerate(self.bindings.items(), 1):
                 if not sequence:
@@ -84,8 +85,20 @@ class GlobalHotkeys:
                 while api.PeekMessageW(ctypes.byref(message), None, 0x0312, 0x0312, 1):
                     ident = int(message.wParam)
                     if ident in registered:
-                        self.activate(actions[ident - 1])
+                        action = actions[ident - 1]
+                        self.activate(action)
+                        if action == 'studio_ptt':
+                            held[ident] = parse_hotkey(self.bindings[action])
+                for ident, (modifiers, key) in list(held.items()):
+                    modifier_up = any(modifiers & flag and not api.GetAsyncKeyState(code) & 0x8000
+                                      for flag, code in ((1,0x12),(2,0x11),(4,0x10)))
+                    win_up = modifiers & 8 and not (api.GetAsyncKeyState(0x5B) | api.GetAsyncKeyState(0x5C)) & 0x8000
+                    if modifier_up or win_up or not api.GetAsyncKeyState(key) & 0x8000:
+                        self.activate('studio_ptt_release')
+                        held.pop(ident, None)
         finally:
             self.ready_event.set()
+            if held:
+                self.activate('studio_ptt_release')
             for ident in registered:
                 api.UnregisterHotKey(None, ident)

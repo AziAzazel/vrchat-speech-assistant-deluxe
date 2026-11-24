@@ -16,6 +16,7 @@ This is vibe-coded but works better than the original in my opinion. If there ar
 
 ## What it does
 
+- **[Live Voice Studio](docs/LIVE_VOICE_STUDIO.md):** offline live microphone pitch/formant, hard Auto-Tune, vocoder, harmonizer and effects with 14 editable presets.
 - Microphone recognition and manual text-to-speech, including pasted ChatGPT answers.
 - Local Windows desktop voices, optional external Piper, and Amazon Polly with optional fallback.
 - Pitch from −75% to +300%: Polly Standard SSML in its normal range, local processing outside it and for Neural/local voices; included in audio export.

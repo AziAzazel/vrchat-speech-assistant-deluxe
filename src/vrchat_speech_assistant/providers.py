@@ -151,6 +151,10 @@ def read_ogg_file(filepath: str, output_device_name: str):
         The name of the output device to use for audio playback.
     """
 
+    from vrchat_speech_assistant.output_control import audio_delivery_callback
+    router = audio_delivery_callback()
+    if router is not None and router(filepath):
+        return
     import pygame
     import pygame.mixer
     check_cancelled()

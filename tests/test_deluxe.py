@@ -524,7 +524,7 @@ def test_workspace_keeps_transport_and_status_outside_scrolling_pages(gui, windo
     for width in (650, 1100, 1500, 650):
         window.resize(width, 800)
         app.processEvents()
-        assert window.tabs.count() == 6
+        assert window.tabs.count() == 7
         assert window.transport.columns == (4 if width >= 820 else 2)
         assert window.transport.geometry().bottom() < window.tabs.geometry().top()
         assert window.status_bar.geometry().top() > window.tabs.geometry().bottom()

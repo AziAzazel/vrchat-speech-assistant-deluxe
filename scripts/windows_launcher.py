@@ -191,9 +191,10 @@ def smoke_test(report):
     assert window.global_shortcuts_checkbox.isChecked()
     window.resize(1350, 800)
     app.processEvents()
-    from vrchat_speech_assistant.ui_smoke import verify_workspace, verify_local_pitch
+    from vrchat_speech_assistant.ui_smoke import verify_workspace, verify_local_pitch, verify_live_studio
     verify_local_pitch(Path(os.environ['APPDATA']))
     verify_workspace(window, app)
+    verify_live_studio(window, app, Path(os.environ['APPDATA']))
     window.speech_pitch_slider.setValue(-15)
     assert window.config["SPEECH"]["pitch"] == "-15"
     window._submit_recognized("Packaged transcript preview")
@@ -298,10 +299,13 @@ def smoke_test(report):
     assert not window.history
     window.close()
     app.processEvents()
-    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "local_pitch_export": "passed", "persistent_status": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "tabbed_workspace": "passed", "compact_mode": "passed", "shortcut_presets": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
+    Path(report).write_text(json.dumps({"version": __version__, "gui": "passed", "sapi_wav": "passed", "audio_export": "passed", "local_pitch_export": "passed", "live_voice_dsp": "passed", "live_voice_ui": "passed", "live_worker_probe": "passed", "persistent_status": "passed", "resources": "passed", "sapi_async_wav": "passed", "preview": "passed", "language_switch": "passed", "native_hotkeys": "passed", "responsive_ui": "passed", "pitch_saved": "passed", "history": "passed", "tabbed_workspace": "passed", "compact_mode": "passed", "shortcut_presets": "passed", "ending_controls": "passed", "pronunciation": "passed", "upstream_catalogue": "passed", "polly_style_guard": "passed", "isolated_audio_probe": "passed", "soundboard": "passed", "semicolon_hotkey": "passed", "shortcut_recording": "passed", "wav_mp3_srt": "passed", "youtube_edge": "passed", "settings_store": "passed", "lazy_polly_sdk": "passed", "live_chatbox": "passed", "favorite_reactions": "passed", "chatbox_preview": "passed", "manual_chatbox_override": "passed"}), encoding="utf-8")
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] in ('--live-voice-worker','--live-voice-probe'):
+        from vrchat_speech_assistant.live_worker import main as live_main
+        return live_main(sys.argv[1:])
     if len(sys.argv) == 3 and sys.argv[1] == "--audio-device-probe":
         try:
             from vrchat_speech_assistant.audio_devices import write_device_probe

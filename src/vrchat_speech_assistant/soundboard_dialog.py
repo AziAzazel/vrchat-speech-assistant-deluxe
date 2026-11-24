@@ -199,7 +199,8 @@ class SoundboardDialog(HotkeySettingsDialog):
         presets = [self.preset(row) for row in range(self.table.rowCount())]
         settings = self.window.config['ROLEPLAY']
         try:
-            validate_presets(presets, [settings.get('key_' + action, DEFAULT_HOTKEYS[action]) for action in ACTIONS])
+            validate_presets(presets, [settings.get('key_' + action, DEFAULT_HOTKEYS[action]) for action in ACTIONS]
+                             + [key for _,key in self.window.live_studio.configured_hotkeys()])
         except ValueError as error:
             QtWidgets.QMessageBox.warning(self, 'Invalid soundboard settings', str(error))
             return

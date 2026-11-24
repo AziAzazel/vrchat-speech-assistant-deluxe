@@ -14,6 +14,9 @@ def run_gui():
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] in ('--live-voice-worker','--live-voice-probe'):
+        from vrchat_speech_assistant.live_worker import main as live_main
+        return live_main(sys.argv[1:])
     if sys.platform.startswith('linux'):
         from vrchat_speech_assistant.linux_launcher import main as linux_main
         return linux_main()

@@ -18,6 +18,11 @@ DEFAULT_HOTKEYS.update(speak_paste="Ctrl+Shift+F8", stop_speaking="Ctrl+Shift+F1
 ACTIONS += [*LANGUAGE_PRESETS, 'refresh_devices', 'edit_message', 'clear_chatbox', 'show_history']
 DEFAULT_HOTKEYS.update({action: '' for action in ACTIONS if action not in DEFAULT_HOTKEYS})
 
+STUDIO_ACTIONS = ['studio_toggle', 'studio_bypass', 'studio_monitor', 'studio_mute',
+                  'studio_next', 'studio_previous', 'studio_ptt', 'studio_panic']
+ACTIONS += STUDIO_ACTIONS
+DEFAULT_HOTKEYS.update({action: '' for action in STUDIO_ACTIONS})
+
 
 def spoken_delivery(text, tags):
     if tags.get("stutter"):
