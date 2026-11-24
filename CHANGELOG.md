@@ -8,6 +8,10 @@ Newest first. Entries identify the published release candidate used for each
 feature set; build-only candidate attempts are not separate feature releases.
 For full operating instructions, use the user guide rather than this history.
 
+### 1.33.0rc2 — Studio shutdown status
+
+- Distinguish intentional worker shutdown from an unexpected audio-process exit, so switching Studio OFF does not display a false crash/reconnect warning. Cover the native-cleanup/IPC-close race in a threaded regression test.
+
 ### 1.33.0rc1 — Live Voice Studio (experimental offline DSP)
 
 - Add a seventh Studio tab for direct live microphone processing, independent of speech recognition. Isolate PortAudio in an authenticated local worker, keep effects off the Qt thread, retain explicit device choices and retry ordinary disconnects without rerouting to another endpoint.

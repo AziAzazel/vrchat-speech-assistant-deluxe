@@ -31,7 +31,7 @@ class StudioController(QtCore.QObject):
         self.stopping=threading.Event();self.ready=threading.Event();self.commands=queue.Queue(128)
         self.folder=tempfile.TemporaryDirectory(prefix='deluxe-studio-')
         self.jobs={};self.jobs_lock=threading.Lock();self.settings=None;self.active=False
-        self.probing=False;self.generation=0;self.error='';self.closed=False
+        self.probing=False;self.generation=0;self.error='';self.closed=False;self.expected_stop=False
 
     def refresh_devices(self):
         if self.probing:return
@@ -60,7 +60,7 @@ class StudioController(QtCore.QObject):
     def start(self, settings):
         if self.active:return
         if self.process is not None:self.stop()
-        self.settings=settings;self.stopping.clear();self.ready.clear();self.active=True
+        self.settings=settings;self.stopping.clear();self.ready.clear();self.active=True;self.expected_stop=False
         self.generation+=1;generation=self.generation
         self.commands=queue.Queue(128)
         listener=socket.socket();listener.bind(('127.0.0.1',0));listener.listen(1);listener.settimeout(.25)
@@ -110,7 +110,7 @@ class StudioController(QtCore.QObject):
                             except queue.Empty:break
                             connection.sendall(json.dumps(message,allow_nan=False).encode()+b'\n')
             except Exception as error:
-                if not self.stopping.is_set():
+                if not self.stopping.is_set() and not self.expected_stop and generation==self.generation:
                     self.active=False;self.ready.clear()
                     self.status.emit({'type':'crashed','message':'Studio audio worker stopped ('+type(error).__name__+'). Your other app features remain available. Switch ON to reconnect.'})
             finally:
@@ -155,6 +155,7 @@ class StudioController(QtCore.QObject):
             target.unlink(missing_ok=True)
 
     def stop(self):
+        self.expected_stop=True
         if self.process is not None:
             self.send({'type':'stop'})
             # Let the communication thread flush stop, then isolate a hung driver.

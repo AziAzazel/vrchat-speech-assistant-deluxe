@@ -188,3 +188,41 @@ def test_windows_ptt_releases_when_key_is_up_or_hotkey_worker_stops(monkeypatch,
     calls=iter((False,True));worker.stop_event=SimpleNamespace(wait=lambda timeout:next(calls))
     worker._run()
     assert actions==['studio_ptt','studio_ptt_release']
+
+
+def test_intentional_worker_stop_is_not_reported_as_a_crash(monkeypatch):
+    import socket
+    import time
+    from PySide6 import QtCore
+    from vrchat_speech_assistant import live_controller
+    class Worker:
+        def __init__(self,argv,**kwargs):
+            self.ended=threading.Event()
+            port=int(argv[-1]);token=kwargs['env']['DELUXE_STUDIO_SESSION']
+            def run():
+                connection=socket.create_connection(('127.0.0.1',port),timeout=3)
+                connection.sendall(json.dumps({'type':'hello','token':token}).encode()+b'\n')
+                reader=connection.makefile('rb')
+                reader.readline() # initial validated configuration
+                connection.sendall(json.dumps({'type':'ready','rate':48000,'buffer':256}).encode()+b'\n')
+                while True:
+                    line=reader.readline()
+                    if not line or json.loads(line).get('type')=='stop':break
+                reader.close();connection.close()
+                # A normal process can close IPC before native cleanup finishes.
+                time.sleep(.15);self.ended.set()
+            self.thread=threading.Thread(target=run,daemon=True);self.thread.start()
+        def poll(self):return 0 if self.ended.is_set() else None
+        def wait(self,timeout=None):
+            if not self.ended.wait(timeout):raise live_controller.subprocess.TimeoutExpired('test worker',timeout)
+            return 0
+        def kill(self):self.ended.set()
+    monkeypatch.setattr(live_controller.subprocess,'Popen',Worker)
+    controller=live_controller.StudioController();events=[]
+    controller.status.connect(events.append,QtCore.Qt.DirectConnection)
+    try:
+        controller.start({'source':'TTS'})
+        assert controller.ready.wait(3)
+        controller.stop()
+        assert not any(event['type']=='crashed' for event in events)
+    finally:controller.close()
